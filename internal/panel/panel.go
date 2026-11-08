@@ -97,8 +97,9 @@ type Device struct {
 	Info      []Msg            `json:"info"`   // /out/info answers and the commands sent, newest last
 	Log       []Msg            `json:"log"`    // /out/log
 	lastCmd   time.Time
-	autoUntil time.Time // answers before it belong to the periodic poll
-	lastAsk   string    // the last "sh ..." sent: "sh cschm1" answers only with the bits
+	autoUntil time.Time       // answers before it belong to the periodic poll
+	lastAsk   string          // the last "sh ..." sent: "sh cschm1" answers only with the bits
+	unknown   map[string]bool // poll commands the device answered with "E:..." (napi-termostat has no lschm/aofs): not asked again
 }
 
 type BrokerState struct {
@@ -259,6 +260,16 @@ func (h *Hub) onMessage(prefix, topic, payload string) {
 	switch sub {
 	case "info":
 		key := paramKey(payload, d.lastAsk)
+		if key == "" && now.Before(d.autoUntil) && strings.HasPrefix(strings.TrimSpace(payload), "E:") && strings.HasPrefix(d.lastAsk, "sh ") {
+			if d.unknown == nil {
+				d.unknown = map[string]bool{}
+			}
+			if !d.unknown[d.lastAsk] {
+				log.Printf("poll: %s does not know %q (%s): not asked any more", id, d.lastAsk, strings.TrimSpace(payload))
+			}
+			d.unknown[d.lastAsk] = true
+			return
+		}
 		if key != "" {
 			d.Params[key] = Value{V: strings.TrimSpace(payload), At: now}
 		}
@@ -351,7 +362,13 @@ func (h *Hub) pollCmds(id string) []string {
 	if used["100"] {
 		cmds = append(cmds, "sh cschm2")
 	}
-	return cmds
+	out := cmds[:0]
+	for _, c := range cmds {
+		if !d.unknown[c] {
+			out = append(out, c)
+		}
+	}
+	return out
 }
 
 const (
