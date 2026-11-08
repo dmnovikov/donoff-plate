@@ -1,0 +1,190 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>donoff · MQTT</title>
+<style>
+:root {
+  --bg: #f4f5f8; --card: #ffffff; --text: #1d2330; --muted: #687187; --line: #e1e4ea; --soft: #f0f2f6;
+  --accent: #2563eb; --ok: #15803d; --bad: #c2410c; --warn: #a16207;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #12151b; --card: #1b2029; --text: #e3e7ee; --muted: #8b94a7; --line: #2b323e; --soft: #232a35;
+    --accent: #6c9cff; --ok: #4ade80; --bad: #fb923c; --warn: #facc15;
+  }
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--text); font: 14px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+header { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 16px; padding: 14px 20px; background: var(--card); border-bottom: 1px solid var(--line); }
+header h1 { font-size: 18px; margin: 0; }
+header a { color: var(--accent); text-decoration: none; }
+header .meta { color: var(--muted); }
+header .nav { margin-left: auto; }
+main { max-width: 1000px; margin: 0 auto; padding: 16px; display: grid; gap: 16px; }
+.cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 16px; }
+.card { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 14px 16px; min-width: 0; }
+.card h2 { font-size: 13px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; margin: 0 0 10px; }
+.dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; background: var(--muted); margin-right: 8px; vertical-align: middle; }
+.dot.ok { background: var(--ok); } .dot.bad { background: var(--bad); } .dot.warn { background: var(--warn); }
+.state { font-size: 20px; font-weight: 650; }
+.err { color: var(--bad); margin-top: 6px; word-break: break-word; }
+.kv { display: grid; grid-template-columns: auto 1fr; gap: 3px 12px; margin-top: 10px; font-size: 13px; }
+.kv span:nth-child(odd) { color: var(--muted); }
+.kv code { word-break: break-all; }
+.field { display: grid; grid-template-columns: 130px minmax(0, 1fr); align-items: center; gap: 8px; margin-bottom: 8px; }
+.field label { color: var(--muted); }
+input[type=text], input[type=number], input[type=password] { width: 100%; padding: 5px 8px; font: inherit; color: var(--text); background: var(--soft); border: 1px solid var(--line); border-radius: 6px; }
+.check { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; font-weight: 600; cursor: pointer; }
+.btn { padding: 6px 14px; font: inherit; border-radius: 6px; border: 1px solid var(--line); background: var(--soft); color: var(--text); cursor: pointer; }
+.btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+.btn:disabled { opacity: .45; cursor: default; }
+.row { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin-top: 12px; }
+.msg { font-size: 13px; } .msg.bad { color: var(--bad); } .msg.ok { color: var(--ok); }
+.hint { color: var(--muted); font-size: 12px; margin-top: 2px; }
+table { width: 100%; border-collapse: collapse; font-size: 13px; }
+th, td { text-align: left; padding: 5px 8px; border-bottom: 1px solid var(--line); vertical-align: top; }
+th { color: var(--muted); font-weight: 600; }
+td code { word-break: break-all; }
+.dir { font-size: 11px; font-weight: 700; padding: 1px 6px; border-radius: 4px; border: 1px solid currentColor; }
+.dir.in { color: var(--warn); } .dir.out { color: var(--accent); }
+.tablewrap { overflow-x: auto; }
+</style>
+</head>
+<body>
+<header>
+  <h1>donoff</h1>
+  <span class="meta">MQTT</span>
+  <span class="nav"><a href="/">← Термостат</a></span>
+</header>
+<main>
+  <div class="cards">
+    <div class="card">
+      <h2>Связь с брокером</h2>
+      <div><span class="dot" id="dot"></span><span class="state" id="state">…</span></div>
+      <div class="err" id="err" hidden></div>
+      <div class="kv">
+        <span>С</span><span id="since">—</span>
+        <span>Отправлено</span><span id="pub">—</span>
+        <span>Принято команд</span><span id="rcv">—</span>
+        <span>Последняя команда</span><span id="lastcmd">—</span>
+        <span>Ответ</span><span id="lastans">—</span>
+      </div>
+    </div>
+    <div class="card">
+      <h2>Настройки</h2>
+      <label class="check"><input type="checkbox" id="enabled"> Подключаться к брокеру</label>
+      <div class="field"><label for="server">Сервер</label><input type="text" id="server" placeholder="mqtt.example.com или IP" autocomplete="off"></div>
+      <div class="field"><label for="port">Порт</label><input type="number" id="port" min="1" max="65535"></div>
+      <div class="field"><label for="user">Пользователь</label><input type="text" id="user" autocomplete="off"></div>
+      <div class="field"><label for="pass">Пароль</label><input type="password" id="pass" autocomplete="new-password"></div>
+      <div class="field"><label for="devid">ID устройства</label><input type="text" id="devid" autocomplete="off"></div>
+      <div class="field"><label for="interval">Интервал, с</label><input type="number" id="interval" min="1" max="3600"></div>
+      <div class="hint">Пользователь и ID устройства входят в топики: <code id="prefixPreview"></code></div>
+      <div class="row"><button class="btn primary" id="save" disabled>Сохранить</button><span class="msg" id="msg"></span></div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>Топики (как в donoff-lib)</h2>
+    <div class="tablewrap"><table>
+      <thead><tr><th>Топик</th><th></th><th>Что</th><th>Сейчас</th></tr></thead>
+      <tbody id="topics"></tbody>
+    </table></div>
+  </div>
+
+  <div class="card">
+    <h2>Команды в <code id="paramsTopic">/in/params</code></h2>
+    <div class="tablewrap"><table>
+      <thead><tr><th>Команда</th><th>Что делает</th><th>Ответ в /out/info</th></tr></thead>
+      <tbody>
+        <tr><td><code>r11</code> / <code>r10</code></td><td>реле вкл / выкл (ручной режим)</td><td><code>r1=1</code></td></tr>
+        <tr><td><code>cooler=1</code> / <code>cooler=0</code></td><td>охлаждение, авто / выкл</td><td><code>cooler=1</code></td></tr>
+        <tr><td><code>hotter=1</code> / <code>hotter=0</code></td><td>нагрев, авто / выкл</td><td><code>hotter=1</code></td></tr>
+        <tr><td><code>ctempl=2600</code></td><td>уставка в сотых °C (меньше 100 — в °C)</td><td><code>ctempl=2600</code></td></tr>
+        <tr><td><code>tdelta=100</code></td><td>гистерезис в сотых °C (меньше 50 — в десятых)</td><td><code>tdelta=100</code></td></tr>
+        <tr><td><code>mode=auto</code></td><td>режим: auto / on / off</td><td><code>mode=auto</code></td></tr>
+        <tr><td><code>sh ctempl</code></td><td>показать: hotter, cooler, ctempl, tdelta, r1, tlevels, mode, time, ip</td><td><code>ctempl=2600</code></td></tr>
+        <tr><td><code>save</code>, <code>…;</code></td><td>принимается (настройки сохраняются всегда)</td><td><code>saved</code></td></tr>
+      </tbody>
+    </table></div>
+    <div class="hint">Между командами — не меньше 1 с, иначе ответ <code>DDOS CHECK</code> (как в donoff-lib).</div>
+  </div>
+</main>
+<script>
+const $ = id => document.getElementById(id);
+let token = '';
+try { token = localStorage.getItem('donoff-token') || ''; } catch (e) {}
+async function api(path, opts = {}) {
+  const headers = { 'Content-Type': 'application/json' };
+  if (token) headers.Authorization = 'Bearer ' + token;
+  const r = await fetch(path, { ...opts, headers });
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(j.error || r.statusText);
+  return j;
+}
+const states = { off: ['выключено', ''], connecting: ['подключение…', 'warn'], connected: ['подключено', 'ok'], error: ['ошибка', 'bad'] };
+const ago = t => { const s = Math.max(0, Math.floor((Date.now() - new Date(t)) / 1000)); return s < 60 ? `${s} с` : s < 3600 ? `${Math.floor(s / 60)} мин` : `${Math.floor(s / 3600)} ч ${Math.floor(s % 3600 / 60)} мин`; };
+const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+
+let cfg = null, dirty = false, live = null;
+const fields = ['enabled', 'server', 'port', 'user', 'pass', 'devid', 'interval'];
+fields.forEach(id => $(id).addEventListener('input', () => { dirty = true; $('save').disabled = false; $('msg').textContent = ''; preview(); }));
+function preview() { $('prefixPreview').textContent = `/${$('user').value.trim() || '<user>'}/${$('devid').value.trim() || '<dev_id>'}/out/...`; }
+
+function render(v) {
+  cfg = v;
+  const [txt, cls] = states[v.status.state] || [v.status.state, ''];
+  $('dot').className = 'dot ' + cls; $('state').textContent = txt;
+  $('err').hidden = !v.status.error; $('err').textContent = v.status.error || '';
+  $('since').textContent = ago(v.status.since) + ' назад';
+  $('pub').textContent = v.status.published; $('rcv').textContent = v.status.received;
+  $('lastcmd').innerHTML = v.status.last_cmd ? `<code>${esc(v.status.last_cmd)}</code> · ${ago(v.status.last_cmd_at)} назад` : '—';
+  $('lastans').innerHTML = v.status.last_answer ? `<code>${esc(v.status.last_answer)}</code>` : '—';
+  if (!dirty) {
+    $('enabled').checked = v.enabled; $('server').value = v.server; $('port').value = v.port; $('user').value = v.user;
+    $('devid').value = v.dev_id; $('interval').value = v.interval; $('pass').value = '';
+    $('pass').placeholder = v.password_set ? 'задан — оставь пустым, чтобы не менять' : 'не задан';
+    preview();
+  }
+  $('paramsTopic').textContent = v.prefix + '/in/params';
+  $('topics').innerHTML = v.channels.map(c =>
+    `<tr><td><code>${esc(v.prefix + c.Topic)}</code></td><td><span class="dir ${c.Dir}">${c.Dir}</span></td><td>${esc(c.Text)}</td><td id="live${c.Topic.replace(/\W/g, '_')}"></td></tr>`).join('');
+  showLive();
+}
+function hms(s) { s = Math.max(0, Math.floor(s)); const p = n => String(n).padStart(2, '0'); return `${p(Math.floor(s / 3600))}:${p(Math.floor(s % 3600 / 60))}:${p(s % 60)}`; }
+function showLive() {
+  if (!live) return;
+  const now = new Date(live.now), since = (now - new Date(live.fan_since)) / 1000;
+  const vals = {
+    '/out/sensors/temp_out': live.temp === null ? '—' : live.temp.toFixed(2),
+    '/out/relays/r1': live.fan ? '1' : '0',
+    '/out/time_up': hms((now - new Date(live.started)) / 1000),
+    '/out/time_comm': live.fan ? hms(since) : 'OFF',
+    '/out/time_down': live.fan ? 'OFF' : hms(since),
+  };
+  for (const [t, v] of Object.entries(vals)) { const el = $('live' + t.replace(/\W/g, '_')); if (el) el.innerHTML = `<code>${v}</code>`; }
+}
+
+async function refresh() {
+  try { render(await api('/api/v1/mqtt')); } catch (e) { $('dot').className = 'dot bad'; $('state').textContent = 'нет связи с donoff: ' + e.message; }
+  try { live = await api('/api/v1/status'); showLive(); } catch (e) {}
+}
+$('save').onclick = async () => {
+  const body = {
+    enabled: $('enabled').checked, server: $('server').value, port: parseInt($('port').value, 10),
+    user: $('user').value, dev_id: $('devid').value, interval: parseInt($('interval').value, 10),
+  };
+  if ($('pass').value !== '') body.password = $('pass').value;
+  try {
+    render(await api('/api/v1/mqtt', { method: 'PUT', body: JSON.stringify(body) }));
+    dirty = false; $('save').disabled = true; $('pass').value = '';
+    $('msg').className = 'msg ok'; $('msg').textContent = 'сохранено';
+    refresh();
+  } catch (e) { $('msg').className = 'msg bad'; $('msg').textContent = e.message; }
+};
+refresh(); setInterval(refresh, 2000);
+</script>
+</body>
+</html>

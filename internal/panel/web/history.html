@@ -1,0 +1,228 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>donoff history</title>
+<style>
+:root {
+  --bg: #f4f5f8; --card: #ffffff; --text: #1d2330; --muted: #687187; --line: #e1e4ea; --soft: #f0f2f6;
+  --accent: #2563eb; --bad: #c2410c;
+  --t1: #2a78d6; --t2: #eb6834; --t3: #1baf7a; --t4: #eda100; --relay: #6250d6; --grid: #e9ecf1;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #12151b; --card: #1b2029; --text: #e3e7ee; --muted: #8b94a7; --line: #2b323e; --soft: #232a35;
+    --accent: #6c9cff; --bad: #fb923c;
+    --t1: #3987e5; --t2: #d95926; --t3: #199e70; --t4: #c98500; --relay: #9085e9; --grid: #262c37;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #12151b; --card: #1b2029; --text: #e3e7ee; --muted: #8b94a7; --line: #2b323e; --soft: #232a35;
+  --accent: #6c9cff; --bad: #fb923c; --t1: #3987e5; --t2: #d95926; --t3: #199e70; --t4: #c98500; --relay: #9085e9; --grid: #262c37;
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--text); font: 14px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+header { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; padding: 12px 16px; background: var(--card); border-bottom: 1px solid var(--line); position: sticky; top: 0; z-index: 3; }
+header a.back { color: var(--accent); text-decoration: none; font-size: 15px; }
+header h1 { font-size: 18px; margin: 0; }
+header select { font: inherit; padding: 3px 6px; border-radius: 6px; border: 1px solid var(--line); background: var(--soft); color: var(--text); }
+.seg { display: inline-flex; flex-wrap: wrap; border: 1px solid var(--line); border-radius: 7px; overflow: hidden; }
+.seg button { border: 0; border-right: 1px solid var(--line); background: var(--soft); color: var(--text); font: inherit; font-size: 13px; padding: 5px 11px; cursor: pointer; }
+.seg button:last-child { border-right: 0; }
+.seg button.cur { background: var(--accent); color: #fff; }
+main { max-width: 1200px; margin: 0 auto; padding: 12px 16px 24px; }
+.box { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px 6px; margin-bottom: 12px; }
+.box h2 { font-size: 14px; margin: 0 0 4px; display: flex; flex-wrap: wrap; gap: 4px 12px; align-items: baseline; }
+.box h2 small { color: var(--muted); font-weight: 400; font-size: 12px; }
+.duty { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 10px; margin-bottom: 12px; }
+.duty > div { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 8px 12px; }
+.duty b { font-size: 22px; font-variant-numeric: tabular-nums; }
+.duty .q { color: var(--muted); font-size: 12px; }
+.chart { position: relative; }
+.chart svg { display: block; width: 100%; overflow: visible; touch-action: pan-y; }
+.chart text { fill: var(--muted); font-size: 11px; font-variant-numeric: tabular-nums; }
+.chart .gl { stroke: var(--grid); stroke-width: 1; }
+.chart .xh { stroke: var(--muted); stroke-width: 1; stroke-dasharray: 3 3; }
+.tip { position: absolute; top: 4px; pointer-events: none; background: var(--card); border: 1px solid var(--line); border-radius: 6px; padding: 5px 8px; font-size: 12px; white-space: nowrap; box-shadow: 0 2px 8px rgba(0,0,0,.15); z-index: 2; }
+.tip .tm { color: var(--muted); }
+.tip i, .legend i { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 5px; }
+.legend { display: flex; flex-wrap: wrap; gap: 2px 16px; font-size: 13px; margin-bottom: 4px; }
+.legend small { color: var(--muted); font-size: 12px; }
+.msg { color: var(--muted); padding: 30px 0; text-align: center; }
+.msg.err { color: var(--bad); }
+</style>
+</head>
+<body>
+<header>
+  <a class="back" href="/">← Устройства</a>
+  <h1 id="dev"></h1>
+  <select id="sensor" hidden></select>
+  <span class="seg" id="range"><button data-r="15m">15 мин</button><button data-r="1h">1 ч</button><button data-r="6h">6 ч</button><button data-r="24h">24 ч</button><button data-r="7d">7 дн</button><button data-r="30d">30 дн</button></span>
+</header>
+<main id="body"><div class="msg">загрузка…</div></main>
+<script>
+const $ = id => document.getElementById(id);
+const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+const q = new URLSearchParams(location.search);
+const dev = q.get('dev') || '';
+let range = q.get('range') || '1h', sensor = q.get('sensor') || '', data = null, timer = 0;
+$('dev').textContent = dev; document.title = dev + ' — графики';
+
+const fmtDur = s => { s = Math.round(s / 60); const d = Math.floor(s / 1440), h = Math.floor(s % 1440 / 60), m = s % 60;
+  return (d ? `${d} д ` : '') + (d || h ? `${h} ч ` : '') + `${m} мин`; };
+const fmtT = (t, long, sec) => new Date(t * 1000).toLocaleString('ru-RU', long
+  ? { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }
+  : sec ? { hour: '2-digit', minute: '2-digit', second: '2-digit' } : { hour: '2-digit', minute: '2-digit' });
+const rangeName = { '15m': '15 минут', '1h': '1 час', '6h': '6 часов', '24h': '24 часа', '7d': '7 дней', '30d': '30 дней' };
+
+function setUrl() {
+  const u = new URLSearchParams({ dev, range }); if (sensor) u.set('sensor', sensor);
+  history.replaceState(null, '', '/history?' + u);
+}
+$('range').onclick = e => { const b = e.target.closest('button'); if (b) { range = b.dataset.r; setUrl(); load(); } };
+$('sensor').onchange = e => { sensor = e.target.value; setUrl(); draw(); };
+
+async function load() {
+  [...$('range').children].forEach(b => b.classList.toggle('cur', b.dataset.r === range));
+  clearTimeout(timer);
+  try {
+    const r = await fetch(`/api/v1/history?dev=${encodeURIComponent(dev)}&range=${range}`);
+    const j = await r.json();
+    if (!r.ok) throw new Error(j.error || r.statusText);
+    data = j; draw();
+  } catch (e) { $('body').innerHTML = `<div class="msg err">${esc(e.message)}</div>`; }
+  timer = setTimeout(load, ['15m', '1h'].includes(range) ? 15000 : 60000);
+}
+window.addEventListener('resize', () => data && draw());
+
+// temp_out (and temp_out2 on the same chart, when there is one); another sensor can be picked
+function pickTemps(h) {
+  const names = h.temps.map(s => s.name), main = sensor || (names.includes('temp_out') ? 'temp_out' : names[0]);
+  const sel = $('sensor');
+  sel.hidden = names.length < 2;
+  sel.innerHTML = names.map(n => `<option${n === main ? ' selected' : ''}>${esc(n)}</option>`).join('');
+  const out = h.temps.filter(s => s.name === main);
+  if (main === 'temp_out') out.push(...h.temps.filter(s => s.name === 'temp_out2'));
+  return out.map((s, i) => ({ ...s, color: `var(--t${i + 1})` }));
+}
+// the other sensors by their unit: one chart per unit
+function unitOf(n) {
+  if (/^sct|current/.test(n)) return { k: 'A', t: 'Ток', u: 'А' };
+  if (/power/.test(n)) return { k: 'W', t: 'Мощность', u: 'Вт' };
+  if (/volt|volage/.test(n)) return { k: 'V', t: 'Напряжение', u: 'В' };
+  if (/energy/.test(n)) return { k: 'kWh', t: 'Энергия', u: 'кВт·ч' };
+  return { k: 'x:' + n, t: n, u: '' };
+}
+function groupOthers(list) {
+  const g = new Map();
+  for (const s of list) { if (!s.pts.length) continue; const u = unitOf(s.name); if (!g.has(u.k)) g.set(u.k, { ...u, series: [] }); g.get(u.k).series.push(s); }
+  return [...g.values()].map(x => ({ ...x, series: x.series.slice(0, 4).map((s, i) => ({ ...s, color: `var(--t${i + 1})` })) }));
+}
+function seriesBox(id, title, ts) {
+  return `<div class="box"><h2>${title}${ts.length === 1 ? ` <small>${stat(ts[0].pts.map(p => p[1]))}</small>` : ''}</h2>`
+    + (ts.length > 1 ? `<div class="legend">${ts.map(s => `<span><i style="background:${s.color}"></i>${esc(s.name)} <small>${stat(s.pts.map(p => p[1]))}</small></span>`).join('')}</div>` : '')
+    + `<div class="chart" id="${id}"></div></div>`;
+}
+const stat = v => `сейчас ${v[v.length - 1].toFixed(2)} · мин ${Math.min(...v).toFixed(2)} · макс ${Math.max(...v).toFixed(2)} · размах ${(Math.max(...v) - Math.min(...v)).toFixed(2)}`;
+
+function draw() {
+  const h = data, from = Date.parse(h.from) / 1000, to = Date.parse(h.to) / 1000, long = to - from > 86400 * 1.5;
+  const ts = pickTemps(h).filter(s => s.pts.length);
+  let html = '';
+  if (h.relays.length) html += '<div class="duty">' + h.relays.map(r => {
+    const pct = r.covered_s ? 100 * r.on_s / r.covered_s : 0;
+    return `<div>${esc(r.name)} в работе за ${rangeName[h.range]}: <b>${r.covered_s ? fmtDur(r.on_s) : '—'}</b> ${r.covered_s ? `(${pct.toFixed(pct < 10 ? 1 : 0)} %)` : ''}
+      <div class="q">${r.covered_s ? `из ${fmtDur(r.covered_s)} с данными` : 'данных нет'}</div></div>`;
+  }).join('') + '</div>';
+  const others = groupOthers(h.others || []);
+  if (ts.length || !others.length) html += seriesBox('ctemp', `Температура${ts.length === 1 ? ' ' + esc(ts[0].name) : ''}, °C`, ts);
+  h.relays.forEach((r, i) => { html += `<div class="box"><h2>Реле ${esc(r.name)} <small>доля времени во включённом состоянии, %</small></h2><div class="chart" id="crel${i}"></div></div>`; });
+  others.forEach((g, i) => { html += seriesBox(`coth${i}`, `${esc(g.t)}${g.series.length === 1 && g.t !== g.series[0].name ? ' ' + esc(g.series[0].name) : ''}${g.u ? ', ' + g.u : ''}`, g.series); });
+  $('body').innerHTML = html;
+  if (ts.length) chart($('ctemp'), ts, { from, to, step: h.step, long, h: 260, unit: ' °C', dec: 2, labels: ts.length > 1, minSpan: 0.5 });
+  else if ($('ctemp')) $('ctemp').innerHTML = '<div class="msg">нет данных за этот период</div>';
+  others.forEach((g, i) => chart($(`coth${i}`), g.series, { from, to, step: h.step, long, h: 200, unit: g.u ? ' ' + g.u : '', dec: 2, labels: g.series.length > 1 }));
+  h.relays.forEach((r, i) => chart($(`crel${i}`), [{ name: r.name, color: 'var(--relay)', pts: r.pts.map(p => [p[0], p[1] * 100]) }],
+    { from, to, step: h.step, long, h: 110, unit: ' %', y0: 0, y1: 100, area: true, ticks: [0, 50, 100], dec: 0 }));
+}
+
+function niceTicks(lo, hi, n) {
+  const raw = (hi - lo) / n, mag = 10 ** Math.floor(Math.log10(raw)), st = [1, 2, 2.5, 5, 10].map(x => x * mag).find(x => x >= raw);
+  const out = []; for (let v = Math.ceil(lo / st - 1e-9) * st; v <= hi + 1e-9; v += st) out.push(+v.toFixed(6)); return out;
+}
+function timeTicks(from, to, width) {
+  const want = Math.max(2, Math.floor(width / 80)), opts = [60, 120, 300, 600, 900, 1800, 3600, 7200, 10800, 21600, 43200, 86400, 172800, 604800];
+  const st = opts.find(x => (to - from) / x <= want) || 604800;
+  const off = new Date().getTimezoneOffset() * 60, out = [];
+  for (let t = Math.ceil((from - off) / st) * st + off; t <= to; t += st) out.push(t);
+  return out;
+}
+function tickLabel(t) {
+  const d = new Date(t * 1000);
+  return d.getHours() || d.getMinutes() ? fmtT(t) : d.toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit' });
+}
+
+// the temperature axis fits the data tightly so that small swings are seen
+function chart(box, series, o) {
+  const all = series.flatMap(s => s.pts.map(p => p[1]));
+  if (!all.length) { box.innerHTML = '<div class="msg">нет данных</div>'; return; }
+  const W = Math.max(260, box.clientWidth), H = o.h, L = 44, R = o.labels ? 92 : 10, T = 8, B = 22;
+  let y0 = o.y0, y1 = o.y1;
+  if (y0 === undefined) {
+    y0 = Math.min(...all); y1 = Math.max(...all);
+    const mid = (y0 + y1) / 2, span = Math.max(y1 - y0, o.minSpan ?? Math.max(Math.abs(mid) * 0.05, 0.02)); // at least 0.5 °C (or 5 %) on the axis
+    y0 = mid - span * 0.6; y1 = mid + span * 0.6;
+  }
+  const x = t => L + (t - o.from) / (o.to - o.from) * (W - L - R), y = v => T + (1 - (v - y0) / (y1 - y0)) * (H - T - B);
+  const yt = o.ticks || niceTicks(y0, y1, 4), xt = timeTicks(o.from, o.to, W - L - R);
+  const ydec = o.ticks ? 0 : Math.max(0, Math.min(2, -Math.floor(Math.log10((yt[1] - yt[0]) || 1) + 1e-9)));
+  let g = '';
+  for (const v of yt) g += `<line class="gl" x1="${L}" x2="${W - R}" y1="${y(v)}" y2="${y(v)}"/><text x="${L - 6}" y="${y(v) + 4}" text-anchor="end">${v.toFixed(ydec)}</text>`;
+  for (const t of xt) g += `<text x="${x(t)}" y="${H - 6}" text-anchor="middle">${tickLabel(t)}</text>`;
+  for (const s of series) {
+    // a gap longer than 2.5 steps breaks the line: no data there
+    const segs = []; let cur = [];
+    for (const p of s.pts) { if (cur.length && p[0] - cur[cur.length - 1][0] > o.step * 2.5) { segs.push(cur); cur = []; } cur.push(p); }
+    if (cur.length) segs.push(cur);
+    for (const sg of segs) {
+      if (o.area) {
+        let d = ''; for (const p of sg) d += `${d ? 'L' : 'M'}${x(p[0] - o.step).toFixed(1)},${y(p[1]).toFixed(1)}L${x(p[0]).toFixed(1)},${y(p[1]).toFixed(1)}`;
+        g += `<path d="${d}L${x(sg[sg.length - 1][0])},${y(0)}L${x(sg[0][0] - o.step)},${y(0)}Z" fill="${s.color}" fill-opacity=".3"/>`;
+        g += `<path d="${d}" fill="none" stroke="${s.color}" stroke-width="1.5" stroke-linejoin="round"/>`;
+      } else if (sg.length === 1) g += `<circle cx="${x(sg[0][0])}" cy="${y(sg[0][1])}" r="2.5" fill="${s.color}"/>`;
+      else g += `<path d="${sg.map((p, i) => `${i ? 'L' : 'M'}${x(p[0]).toFixed(1)},${y(p[1]).toFixed(1)}`).join('')}" fill="none" stroke="${s.color}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>`;
+    }
+  }
+  if (o.labels) { // the name and the last value at the end of every line, pushed apart
+    const ends = series.map(s => ({ s, v: s.pts[s.pts.length - 1][1], yy: y(s.pts[s.pts.length - 1][1]) + 4 })).sort((a, b) => a.yy - b.yy);
+    for (let i = 1; i < ends.length; i++) ends[i].yy = Math.max(ends[i].yy, ends[i - 1].yy + 14);
+    for (const e of ends) g += `<circle cx="${W - R + 8}" cy="${e.yy - 4}" r="3.5" fill="${e.s.color}"/><text x="${W - R + 15}" y="${e.yy}" style="fill:var(--text)">${esc(e.s.name)} ${e.v.toFixed(2)}</text>`;
+  }
+  box.innerHTML = `<svg viewBox="0 0 ${W} ${H}" height="${H}">${g}<line class="xh" y1="${T}" y2="${H - B}" visibility="hidden"/>`
+    + series.map(s => `<circle class="hd" r="4" fill="${s.color}" stroke="var(--card)" stroke-width="2" visibility="hidden"/>`).join('')
+    + `<rect x="${L}" y="0" width="${W - L - R}" height="${H}" fill="transparent"/></svg><div class="tip" hidden></div>`;
+  const svg = box.querySelector('svg'), xh = svg.querySelector('.xh'), hds = [...svg.querySelectorAll('.hd')], tip = box.querySelector('.tip');
+  const hide = () => { xh.setAttribute('visibility', 'hidden'); hds.forEach(c => c.setAttribute('visibility', 'hidden')); tip.hidden = true; };
+  svg.addEventListener('pointermove', e => {
+    const r = svg.getBoundingClientRect(), px = (e.clientX - r.left) * W / r.width;
+    const t = o.from + (px - L) / (W - L - R) * (o.to - o.from);
+    const near = series.map(s => { let b = null; for (const p of s.pts) if (!b || Math.abs(p[0] - t) < Math.abs(b[0] - t)) b = p; return b && Math.abs(b[0] - t) <= o.step * 2 ? b : null; });
+    const first = near.find(Boolean);
+    if (!first) return hide();
+    xh.setAttribute('x1', x(first[0])); xh.setAttribute('x2', x(first[0])); xh.setAttribute('visibility', 'visible');
+    near.forEach((b, i) => { if (b) { hds[i].setAttribute('cx', x(b[0])); hds[i].setAttribute('cy', y(b[1])); } hds[i].setAttribute('visibility', b ? 'visible' : 'hidden'); });
+    const span = o.long ? `${fmtT(first[0] - o.step, true)} – ${fmtT(first[0])}` : `${fmtT(first[0] - o.step, false, o.step < 60)} – ${fmtT(first[0], false, o.step < 60)}`;
+    tip.innerHTML = `<div class="tm">${span}</div>` + series.map((s, i) => near[i] ? `<div>${series.length > 1 ? `<i style="background:${s.color}"></i>${esc(s.name)}: ` : ''}<b>${near[i][1].toFixed(o.dec)}${o.unit}</b></div>` : '').join('');
+    tip.hidden = false;
+    const bx = x(first[0]) * r.width / W;
+    tip.style.left = (bx + tip.offsetWidth + 16 > r.width ? bx - tip.offsetWidth - 10 : bx + 10) + 'px';
+  });
+  svg.addEventListener('pointerleave', hide);
+}
+
+if (!dev) $('body').innerHTML = '<div class="msg err">не указано устройство: /history?dev=…</div>';
+else load();
+</script>
+</body>
+</html>

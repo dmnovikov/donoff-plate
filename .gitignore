@@ -1,0 +1,8 @@
+dist/
+mqtt.creds
+influx.creds
+panel.token
+panel.log
+panel-tunnel.sh
+donoff-panel-groups.json
+*.tmp

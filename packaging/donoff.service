@@ -1,0 +1,15 @@
+[Unit]
+Description=donoff: cooling thermostat (DS18B20 -> fan relay) with a web page
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+StateDirectory=donoff
+EnvironmentFile=-/etc/default/donoff
+ExecStart=/usr/local/bin/donoff $DONOFF_OPTS
+Restart=always
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target

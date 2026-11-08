@@ -1,0 +1,8 @@
+# Options of donoff.service (donoff -h). Setpoint / hysteresis / mode are set on the web page
+# and kept in /var/lib/donoff/state.json.
+#
+#   --line 14 --chip /dev/gpiochip2   fan relay (GPIO2_B6), --active-low if the relay is on at 0
+#   --sensor 28-0316b3f1abff          a given DS18B20 (default: the first one)
+#   --trusted 192.168.0.0/16          networks without a token (loopback always)
+#   --token-file /etc/donoff/token    token for the other addresses (none = they are refused)
+DONOFF_OPTS="--listen :8080 --trusted 192.168.0.0/16"

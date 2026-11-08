@@ -1,0 +1,332 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>donoff panel</title>
+<style>
+:root {
+  --bg: #f4f5f8; --card: #ffffff; --text: #1d2330; --muted: #687187; --line: #e1e4ea; --soft: #f0f2f6;
+  --accent: #2563eb; --ok: #15803d; --bad: #c2410c; --warn: #a16207; --cool: #0284c7;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #12151b; --card: #1b2029; --text: #e3e7ee; --muted: #8b94a7; --line: #2b323e; --soft: #232a35;
+    --accent: #6c9cff; --ok: #4ade80; --bad: #fb923c; --warn: #facc15; --cool: #38bdf8;
+  }
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--text); font: 14px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+header { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 16px; padding: 14px 20px; background: var(--card); border-bottom: 1px solid var(--line); position: sticky; top: 0; z-index: 2; }
+header h1 { font-size: 18px; margin: 0; }
+header .meta { color: var(--muted); font-size: 13px; }
+header input { margin-left: auto; width: 200px; }
+main { max-width: 1400px; margin: 0 auto; padding: 16px; }
+.grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(330px, 1fr)); gap: 14px; align-items: start; }
+.card { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px; min-width: 0; }
+.card.stale { opacity: .6; }
+.top { display: flex; align-items: center; gap: 8px; }
+.top h2 { margin: 0; font-size: 16px; flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.seen { color: var(--muted); font-size: 12px; }
+.dot { display: inline-block; width: 9px; height: 9px; border-radius: 50%; background: var(--muted); flex: none; }
+.dot.ok { background: var(--ok); } .dot.warn { background: var(--warn); } .dot.bad { background: var(--bad); }
+.big { font-size: 34px; font-weight: 650; font-variant-numeric: tabular-nums; margin: 6px 0 2px; }
+.big small { font-size: 16px; color: var(--muted); font-weight: 500; }
+.big .lbl { font-size: 12px; color: var(--muted); font-weight: 400; margin-left: 6px; }
+.kv { display: grid; grid-template-columns: auto 1fr; gap: 1px 12px; font-size: 13px; margin-top: 6px; }
+.kv > span:nth-child(odd) { color: var(--muted); }
+.kv > span { min-width: 0; overflow-wrap: anywhere; }
+.num { font-variant-numeric: tabular-nums; }
+.relays { display: grid; gap: 6px; margin-top: 10px; }
+.relay { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.relay .name { font-weight: 600; min-width: 34px; }
+.pill { display: inline-flex; align-items: center; padding: 1px 10px; border-radius: 999px; font-size: 12px; font-weight: 700; border: 1.5px solid currentColor; }
+.pill.on { color: var(--cool); } .pill.off { color: var(--muted); }
+.relay .t { color: var(--muted); font-size: 12px; }
+.relay .acts { margin-left: auto; display: flex; gap: 4px; }
+.btn { padding: 3px 10px; font: inherit; font-size: 13px; border-radius: 6px; border: 1px solid var(--line); background: var(--soft); color: var(--text); cursor: pointer; }
+.btn:hover { border-color: var(--muted); }
+.btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+.btn.on { color: var(--cool); border-color: var(--cool); } .btn.off { color: var(--muted); }
+.btn:disabled { opacity: .45; cursor: default; }
+input[type=text], input[type=number], input[type=search] { padding: 4px 8px; font: inherit; font-size: 13px; color: var(--text); background: var(--soft); border: 1px solid var(--line); border-radius: 6px; min-width: 0; }
+details { margin-top: 10px; border-top: 1px solid var(--line); padding-top: 8px; }
+summary { cursor: pointer; color: var(--accent); font-size: 13px; user-select: none; }
+.ctl { display: grid; gap: 8px; margin-top: 8px; }
+.ctl .row { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.ctl .row > label { color: var(--muted); font-size: 13px; width: 108px; }
+.ctl input[type=number] { width: 80px; }
+.ctl input[type=text] { flex: 1; }
+.levels { font-size: 12px; color: var(--muted); }
+.msgs { margin-top: 8px; font: 12px/1.4 ui-monospace, SFMono-Regular, Menlo, monospace; max-height: 140px; overflow-y: auto; background: var(--soft); border-radius: 6px; padding: 4px 8px; }
+.msgs div { white-space: pre-wrap; overflow-wrap: anywhere; }
+.msgs .tm { color: var(--muted); }
+.msgs .out { color: var(--accent); }
+.msgs:empty { display: none; }
+.err { color: var(--bad); font-size: 12px; min-height: 1em; }
+.empty { color: var(--muted); padding: 40px; text-align: center; }
+.group { margin-bottom: 22px; }
+.group > h2 { font-size: 15px; margin: 0 0 10px; display: flex; align-items: baseline; gap: 8px; }
+.group > h2 small { color: var(--muted); font-weight: 400; font-size: 13px; }
+.mode { margin-top: 8px; font-size: 13px; }
+.mode b.heat { color: var(--bad); } .mode b.cool { color: var(--cool); } .mode .q { color: var(--muted); }
+.ctl .rctl { display: flex; gap: 6px; flex-wrap: wrap; }
+.other { font-size: 12px; }
+.mdot { display: inline-block; width: 11px; height: 11px; border-radius: 50%; background: var(--muted); opacity: .55; flex: none; align-self: center; }
+.mdot.heat { background: #ea580c; opacity: 1; } .mdot.cool { background: #2563eb; opacity: 1; } .mdot.none { visibility: hidden; }
+.hbtn { margin-top: 8px; display: flex; align-items: center; gap: 8px; }
+.hbtn[hidden] { display: none; }
+.hbtn .sp { flex: 1; min-width: 0; display: block; color: inherit; text-decoration: none; }
+.hbtn svg { display: block; width: 100%; height: 38px; overflow: visible; }
+.hbtn .sl { stroke: var(--accent); stroke-width: 1.6; fill: none; vector-effect: non-scaling-stroke; stroke-linejoin: round; }
+.hbtn .sa { fill: var(--accent); opacity: .1; }
+.hbtn .sc { font-size: 11px; color: var(--muted); display: flex; justify-content: space-between; gap: 8px; }
+.hbtn .go { flex: none; width: 34px; height: 34px; display: grid; place-items: center; border-radius: 8px; border: 1px solid var(--line); background: var(--soft); color: var(--text); text-decoration: none; font-size: 18px; }
+.hbtn .go:hover { border-color: var(--muted); }
+</style>
+</head>
+<body>
+<header>
+  <h1>donoff</h1>
+  <span class="meta"><span class="dot" id="bdot"></span> <span id="broker">…</span></span>
+  <span class="meta" id="count"></span>
+  <input type="search" id="filter" placeholder="фильтр по устройству">
+</header>
+<main>
+  <div id="groups"></div>
+  <datalist id="grouplist"></datalist>
+  <div class="empty" id="empty" hidden>Устройств пока нет — жду сообщений от брокера…</div>
+</main>
+<script>
+const $ = id => document.getElementById(id);
+const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+async function api(path, opts = {}) {
+  const r = await fetch(path, { ...opts, headers: { 'Content-Type': 'application/json' } });
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(j.error || r.statusText);
+  return j;
+}
+let now = new Date();
+const age = t => Math.max(0, (now - new Date(t)) / 1000);
+const ago = t => { const s = Math.floor(age(t)); return s < 60 ? `${s} с` : s < 3600 ? `${Math.floor(s / 60)} мин` : s < 86400 ? `${Math.floor(s / 3600)} ч` : `${Math.floor(s / 86400)} д`; };
+const hm = t => new Date(t).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+
+// topic kinds
+const isTime = k => ['time_up', 'time_comm', 'time_down'].includes(k);
+const relayKey = k => /^relays\/r\d+$/.test(k) || /^b\d+$/.test(k);
+const sensorName = k => k.replace(/^sensors\//, '');
+const isTemp = k => /^temp/.test(sensorName(k));
+function primaryTemp(t) {
+  for (const k of ['sensors/temp_in', 'temp_in', 'sensors/temp_out', 'temp_out']) if (t[k]) return [k, t[k]];
+  const k = Object.keys(t).find(k => isTemp(k) && !k.endsWith('_json'));
+  return k ? [k, t[k]] : null;
+}
+function deviceClock(t) {
+  let best = null;
+  for (const [k, v] of Object.entries(t)) {
+    if (!v.v.startsWith('{')) continue;
+    try { const j = JSON.parse(v.v); if (j.timestamp && (!best || v.at > best.at)) best = { ts: j.timestamp, at: v.at }; } catch (e) {}
+  }
+  return best;
+}
+
+async function send(dev, cmd, card, confirmText) {
+  if (confirmText && !confirm(`${dev}: ${confirmText}\n\nКоманда: ${cmd}`)) return false;
+  const err = card.querySelector('.err');
+  try { await api('/api/v1/cmd', { method: 'POST', body: JSON.stringify({ dev, cmd }) }); err.textContent = ''; refresh(); return true; }
+  catch (e) { err.textContent = e.message; return false; }
+}
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+async function askMode(id, el) { if (await send(id, 'sh hotter', el)) { await sleep(1200); send(id, 'sh cooler', el); } }
+
+// "C=2600,D=..,N=.. dT=100" or the old EEPROM form "C=26,... dT=5": donoff-lib reads a level
+// below 100 as °C and a delta below 50 as 1/10 °C, everything else as 1/100 °C
+function parseLevels(text) {
+  const C = +text.match(/C=(-?\d+)/)[1], dT = +text.match(/dT=(-?\d+)/)[1];
+  return { c: Math.abs(C) < 100 ? C : C / 100, dt: (dT < 50 ? dT * 10 : dT) / 100 };
+}
+
+// the relay mode from the answers "hotter=N" / "cooler=N" (donoff-lib clears one when the other is set)
+function relayMode(info) {
+  const last = re => [...info].reverse().find(m => !m.out && re.test(m.text));
+  const h = last(/^hotter=\d+$/), c = last(/^cooler=\d+$/);
+  const hv = h && +h.text.split('=')[1], cv = c && +c.text.split('=')[1];
+  if (h && hv > 0 && (!c || cv === 0 || h.at > c.at)) return { k: 'heat', t: 'термостат: нагрев', at: h.at };
+  if (c && cv > 0) return { k: 'cool', t: 'термостат: охлаждение', at: c.at };
+  if (h && c) return { k: 'manual', t: 'ручное (термостат выключен)', at: h.at > c.at ? h.at : c.at };
+  return null;
+}
+
+// the small chart of temp_out for the last 24 h on the card, like the tiles of an exchange
+const sparks = new Map(); // dev -> {at, busy}
+async function spark(id, el) {
+  const st = sparks.get(id) || {};
+  if (st.busy || Date.now() - (st.at || 0) < 60000) return;
+  sparks.set(id, { ...st, busy: true });
+  try {
+    const h = await api(`/api/v1/history?dev=${encodeURIComponent(id)}&range=24h`);
+    // temp_out, or another temperature, or the current (sct013x3 is the sum of the three phases)
+    const o = h.others || [];
+    const s = h.temps.find(x => x.name === 'temp_out') || h.temps[0] || o.find(x => x.name === 'sct013x3') || o.find(x => /^sct|current/.test(x.name)) || o[0];
+    const unit = !s ? '' : /^temp/.test(s.name) ? '°C' : /^sct|current/.test(s.name) ? 'А' : /power/.test(s.name) ? 'Вт' : /volt|volage/.test(s.name) ? 'В' : '';
+    const box = el.querySelector('.spk'), cap = el.querySelector('.sc');
+    if (!s || s.pts.length < 2) { box.innerHTML = ''; cap.innerHTML = s ? '<span>история копится…</span>' : ''; }
+    else {
+      const v = s.pts.map(p => p[1]), t0 = s.pts[0][0], t1 = s.pts[s.pts.length - 1][0];
+      let lo = Math.min(...v), hi = Math.max(...v);
+      const minSpan = unit === '°C' ? 0.5 : Math.max(Math.abs(hi + lo) / 2 * 0.05, 0.02);
+      if (hi - lo < minSpan) { const m = (hi + lo) / 2; lo = m - minSpan / 2; hi = m + minSpan / 2; }
+      const X = t => (t - t0) / Math.max(1, t1 - t0) * 200, Y = x => 36 - (x - lo) / (hi - lo) * 34;
+      const d = s.pts.map((p, i) => `${i ? 'L' : 'M'}${X(p[0]).toFixed(1)},${Y(p[1]).toFixed(1)}`).join('');
+      box.innerHTML = `<svg viewBox="0 0 200 38" preserveAspectRatio="none"><path class="sa" d="${d}L200,38L0,38Z"/><path class="sl" d="${d}"/></svg>`;
+      const dt = v[v.length - 1] - v[0], hrs = Math.round((t1 - t0) / 3600);
+      cap.innerHTML = `<span>${esc(s.name)} за ${hrs >= 1 ? hrs + ' ч' : Math.max(1, Math.round((t1 - t0) / 60)) + ' мин'}: ${dt >= 0 ? '+' : '−'}${Math.abs(dt).toFixed(2)} ${unit}</span><span>${Math.min(...v).toFixed(2)} … ${Math.max(...v).toFixed(2)}</span>`;
+    }
+    sparks.set(id, { at: Date.now() });
+  } catch (e) { sparks.set(id, { at: Date.now() }); }
+}
+
+const cards = new Map(), sections = new Map();
+let groups = {}, hasHistory = false;
+function makeCard(id) {
+  const el = document.createElement('div');
+  el.className = 'card';
+  el.innerHTML = `
+    <div class="live"></div>
+    <div class="hbtn" hidden><a class="sp hlink"><div class="spk"></div><div class="sc"></div></a><a class="go hlink" title="все графики">›</a></div>
+    <details>
+      <summary>Управление</summary>
+      <div class="ctl">
+        <div class="levels"></div>
+        <div class="row"><label>Реле</label><span class="rctl"></span></div>
+        <div class="row"><label>Уставка, °C</label><input type="number" class="sp" step="0.5" min="-40" max="100"><button class="btn primary" data-a="sp">Задать</button></div>
+        <div class="row"><label>Гистерезис, °C</label><input type="number" class="hy" step="0.1" min="0" max="20"><button class="btn primary" data-a="hy">Задать</button></div>
+        <div class="row"><label>Режим</label><button class="btn" data-a="cool">❄ Охлаждение</button><button class="btn" data-a="heat">🔥 Нагрев</button><button class="btn" data-a="autooff">Выкл авто</button></div>
+        <div class="row"><label>Запросить</label><button class="btn" data-q="sh tlevels">уставки</button><button class="btn" data-a="askmode">режим</button><button class="btn" data-q="sh time">время</button><button class="btn" data-q="sh ip">ip</button></div>
+        <div class="row"><input type="text" class="raw" placeholder="своя команда, напр. sh r1"><button class="btn" data-a="raw">Отправить</button></div>
+        <div class="row"><label>Группа</label><input type="text" class="grp" list="grouplist" placeholder="без группы"><button class="btn" data-a="grp">Сохранить</button></div>
+      </div>
+    </details>
+    <div class="err"></div>
+    <div class="msgs"></div>`;
+  el.querySelector('.ctl').addEventListener('click', async e => {
+    const b = e.target.closest('button'); if (!b) return;
+    if (b.dataset.q) return send(id, b.dataset.q, el);
+    const a = b.dataset.a;
+    if (a === 'sp') { const v = parseFloat(el.querySelector('.sp').value); if (!isFinite(v)) return; return send(id, `ctempl=${Math.round(v * 100)}`, el, `уставка ${v} °C?`); }
+    if (a === 'hy') { const v = parseFloat(el.querySelector('.hy').value); if (!isFinite(v)) return; return send(id, `tdelta=${Math.round(v * 100)}`, el, `гистерезис ${v} °C?`); }
+    if (b.dataset.r) { const n = b.dataset.r, on = b.dataset.v === '1'; return send(id, `r${n}${on ? 1 : 0}`, el, `${on ? 'ВКЛЮЧИТЬ' : 'ВЫКЛЮЧИТЬ'} реле r${n}?`); }
+    if (a === 'askmode') return askMode(id, el);
+    if (a === 'cool') { if (await send(id, 'cooler=1', el, 'включить режим ОХЛАЖДЕНИЯ?')) { await sleep(1200); askMode(id, el); } return; }
+    if (a === 'heat') { if (await send(id, 'hotter=1', el, 'включить режим НАГРЕВА?')) { await sleep(1200); askMode(id, el); } return; }
+    if (a === 'autooff') { if (await send(id, 'hotter=0', el, 'выключить автоматику (hotter=0, затем cooler=0)? Реле выключится.')) { await sleep(1200); if (await send(id, 'cooler=0', el)) { await sleep(1200); askMode(id, el); } } return; }
+    if (a === 'grp') {
+      try { await api('/api/v1/group', { method: 'PUT', body: JSON.stringify({ dev: id, group: el.querySelector('.grp').value }) }); el.querySelector('.grp').dataset.dirty = ''; el.querySelector('.err').textContent = ''; refresh(); }
+      catch (e) { el.querySelector('.err').textContent = e.message; }
+      return;
+    }
+    if (a === 'raw') { const c = el.querySelector('.raw').value.trim(); if (c && await send(id, c, el, 'отправить команду?')) el.querySelector('.raw').value = ''; }
+  });
+  el.querySelectorAll('.hlink').forEach(a => a.href = '/history?dev=' + encodeURIComponent(id));
+  el.querySelector('.grp').addEventListener('input', e => { e.target.dataset.dirty = '1'; });
+  cards.set(id, el);
+  return el;
+}
+
+function render(d) {
+  d.info = d.info || []; d.log = d.log || []; d.topics = d.topics || {};
+  const el = cards.get(d.id) || makeCard(d.id);
+  const t = d.topics, a = age(d.last_seen);
+  el.classList.toggle('stale', a > 300);
+  const dot = a < 60 ? 'ok' : a < 300 ? 'warn' : '';
+  const pt = primaryTemp(t);
+  const clock = deviceClock(t);
+  const relays = Object.keys(t).filter(relayKey).sort();
+  const sensors = Object.keys(t).filter(k => !isTime(k) && !relayKey(k) && !k.endsWith('_json') && !t[k].v.startsWith('{') && (!pt || k !== pt[0])).sort();
+  const rows = [];
+  if (t.time_up) rows.push(['Время работы', `<span class="num">${esc(t.time_up.v)}</span>`]);
+  if (clock) rows.push(['Часы устройства', `<span class="num">${esc(clock.ts)}</span>`]);
+  for (const k of sensors) rows.push([esc(sensorName(k)), `<span class="num">${esc(t[k].v)}</span>`]);
+  // the thermostat relay (the first one) gets a dot: orange = heating, blue = cooling, gray = no thermostat
+  const m = relays.length ? relayMode(d.info) : null;
+  const mdot = m ? { heat: ['heat', 'термостат: нагрев'], cool: ['cool', 'термостат: охлаждение'], manual: ['', 'термостат не задан'] }[m.k] : ['', 'режим ещё неизвестен'];
+  const relayHtml = relays.map((k, i) => {
+    const on = t[k].v === '1', n = (k.match(/^relays\/r(\d+)$/) || [])[1];
+    let tm = '';
+    if (k === 'relays/r1') {
+      if (on && t.time_comm && t.time_comm.v !== 'OFF') tm = `вкл ${esc(t.time_comm.v)}`;
+      if (!on && t.time_down && t.time_down.v !== 'OFF') tm = `выкл ${esc(t.time_down.v)}`;
+    }
+    return `<div class="relay">${i === 0 ? `<span class="mdot ${mdot[0]}" title="${mdot[1]}"></span>` : '<span class="mdot none"></span>'}<span class="name">${esc(k.replace(/^relays\//, ''))}</span><span class="pill ${on ? 'on' : 'off'}">${on ? 'ВКЛ' : 'ВЫКЛ'}</span><span class="t">${tm}</span></div>`;
+  }).join('');
+  el.querySelector('.live').innerHTML = `
+    <div class="top"><span class="dot ${dot}"></span><h2>${esc(d.id)}</h2><span class="seen">${ago(d.last_seen)} назад</span></div>
+    ${pt ? `<div class="big">${esc(pt[1].v)} <small>°C</small><span class="lbl">${esc(sensorName(pt[0]))}</span></div>` : ''}
+    ${rows.length ? `<div class="kv">${rows.map(([k, v]) => `<span>${k}</span><span>${v}</span>`).join('')}</div>` : ''}
+    ${relayHtml ? `<div class="relays">${relayHtml}</div>` : ''}
+`;
+  const rctl = relays.map(k => (k.match(/^relays\/r(\d+)$/) || [])[1]).filter(Boolean)
+    .map(n => `<button class="btn on" data-r="${n}" data-v="1">r${n} вкл</button><button class="btn off" data-r="${n}" data-v="0">r${n} выкл</button>`).join('');
+  const rbox = el.querySelector('.rctl');
+  if (rbox.dataset.html !== rctl) { rbox.innerHTML = rctl || '<span class="q">реле нет</span>'; rbox.dataset.html = rctl; }
+  el.querySelector('.hbtn').hidden = !(hasHistory && (relays.length || sensors.length || pt));
+  if (hasHistory) spark(d.id, el);
+  const g = el.querySelector('.grp');
+  if (!g.dataset.dirty && document.activeElement !== g) g.value = groups[d.id] || '';
+  // the last answer with levels: "C=2600,D=2600,N=2600 dT=100"
+  const lv = [...d.info].reverse().find(m => !m.out && /^C=-?\d+.*dT=-?\d+/.test(m.text));
+  el.querySelector('.levels').textContent = lv
+    ? (() => { const l = parseLevels(lv.text); return `Сейчас: уставка ${l.c} °C, гистерезис ${l.dt} °C (ответ ${ago(lv.at)} назад)`; })()
+    : 'Текущие уставки неизвестны — панель спрашивает их раз в минуту, или «Запросить: уставки».';
+  const msgs = [...d.info.filter(m => !m.auto).map(m => ({ ...m, k: 'i' })), ...d.log.map(m => ({ ...m, k: 'l' }))].sort((x, y) => x.at < y.at ? -1 : 1).slice(-12);
+  const box = el.querySelector('.msgs');
+  const atBottom = box.scrollTop + box.clientHeight >= box.scrollHeight - 4;
+  box.innerHTML = msgs.map(m => `<div><span class="tm">${hm(m.at)}</span> ${m.out ? `<span class="out">→ ${esc(m.text)}</span>` : (m.k === 'l' ? 'log: ' : '') + esc(m.text)}</div>`).join('');
+  if (atBottom) box.scrollTop = box.scrollHeight;
+  return el;
+}
+
+async function refresh() {
+  let s;
+  try { s = await api('/api/v1/state'); } catch (e) { $('bdot').className = 'dot bad'; $('broker').textContent = 'нет связи с панелью: ' + e.message; return; }
+  now = new Date(s.now);
+  $('bdot').className = 'dot ' + (s.broker.connected ? 'ok' : 'bad');
+  $('broker').textContent = `${s.broker.user}@${s.broker.server}` + (s.broker.connected ? '' : ' — ' + (s.broker.error || 'подключение…'));
+  const f = $('filter').value.trim().toLowerCase();
+  const devs = (s.devices || []).filter(d => !f || d.id.toLowerCase().includes(f));
+  $('count').textContent = `устройств: ${(s.devices || []).length}`;
+  groups = s.groups || {};
+  hasHistory = !!s.history;
+  const names = [...new Set(Object.values(groups))].sort((x, y) => x.localeCompare(y, 'ru'));
+  $('grouplist').innerHTML = names.map(n => `<option value="${esc(n)}">`).join('');
+  const by = new Map(names.map(n => [n, []]));
+  by.set('', []);
+  for (const d of devs) by.get(groups[d.id] && by.has(groups[d.id]) ? groups[d.id] : '').push(d);
+  const order = [...names, ''].filter(n => by.get(n).length);
+  const root = $('groups');
+  const wantSec = order.map(n => {
+    let sec = sections.get(n);
+    if (!sec) {
+      sec = document.createElement('section'); sec.className = 'group';
+      sec.innerHTML = '<h2><span class="gname"></span> <small></small></h2><div class="grid"></div>';
+      sections.set(n, sec);
+    }
+    const list = by.get(n);
+    sec.querySelector('.gname').textContent = n || (names.length ? 'Без группы' : 'Устройства');
+    sec.querySelector('small').textContent = list.length;
+    const grid = sec.querySelector('.grid');
+    const want = list.map(render);
+    [...grid.children].forEach(c => { if (!want.includes(c)) c.remove(); });
+    want.forEach((c, i) => { if (grid.children[i] !== c) grid.insertBefore(c, grid.children[i] || null); });
+    return sec;
+  });
+  [...root.children].forEach(c => { if (!wantSec.includes(c)) c.remove(); });
+  wantSec.forEach((c, i) => { if (root.children[i] !== c) root.insertBefore(c, root.children[i] || null); });
+  $('empty').hidden = devs.length > 0;
+}
+
+$('filter').addEventListener('input', refresh);
+refresh(); setInterval(refresh, 2000);
+</script>
+</body>
+</html>
