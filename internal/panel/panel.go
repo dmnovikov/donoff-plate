@@ -488,3 +488,19 @@ func reply(w http.ResponseWriter, code int, v any) {
 	w.WriteHeader(code)
 	json.NewEncoder(w).Encode(v)
 }
+
+// ParseNets reads "192.168.0.0/16,10.0.0.0/8" (the --trusted flag).
+func ParseNets(s string) ([]netip.Prefix, error) {
+	var out []netip.Prefix
+	for _, f := range strings.Split(s, ",") {
+		if f = strings.TrimSpace(f); f == "" {
+			continue
+		}
+		p, err := netip.ParsePrefix(f)
+		if err != nil {
+			return nil, fmt.Errorf("--trusted %q: %w", f, err)
+		}
+		out = append(out, p.Masked())
+	}
+	return out, nil
+}

@@ -1,4 +1,4 @@
-module github.com/lab240/napi-donoff
+module github.com/dmnovikov/donoff-plate
 
 go 1.26.0
 

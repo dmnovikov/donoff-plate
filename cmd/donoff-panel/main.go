@@ -13,8 +13,7 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/lab240/napi-donoff/internal/panel"
-	"github.com/lab240/napi-donoff/internal/web"
+	"github.com/dmnovikov/donoff-plate/internal/panel"
 )
 
 var version = "dev"
@@ -43,7 +42,7 @@ func main() {
 	if err != nil {
 		log.Fatalf("%s: %v", *creds, err)
 	}
-	nets, err := web.ParseNets(*trusted)
+	nets, err := panel.ParseNets(*trusted)
 	if err != nil {
 		log.Fatal(err)
 	}
