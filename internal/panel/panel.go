@@ -11,13 +11,13 @@
 package panel
 
 import (
+	"context"
 	"crypto/rand"
 	_ "embed"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"log"
 	"net"
 	"net/http"
@@ -442,19 +442,53 @@ type stateView struct {
 	Devices []Device          `json:"devices"`
 	Groups  map[string]string `json:"groups"`
 	History bool              `json:"history"` // /api/v1/history works
+	Me      *Who              `json:"me,omitempty"`
+	Users   bool              `json:"users"` // the panel has users (the admin page works)
 	Now     time.Time         `json:"now"`
 }
 
-func (h *Hub) snapshot() stateView {
+// GroupOf is the group of the device ("" = none).
+func (h *Hub) GroupOf(dev string) string {
 	h.mu.Lock()
 	defer h.mu.Unlock()
-	v := stateView{Broker: h.st, Now: time.Now(), Devices: []Device{}, Groups: map[string]string{}, History: h.influx != nil}
+	return h.groups[dev]
+}
+
+// AllGroups: the names of the groups in use, sorted.
+func (h *Hub) AllGroups() []string {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	seen := map[string]bool{}
+	out := []string{}
+	for _, g := range h.groups {
+		if !seen[g] {
+			seen[g] = true
+			out = append(out, g)
+		}
+	}
+	sort.Strings(out)
+	return out
+}
+
+func (h *Hub) snapshot() stateView { return h.snapshotFor(nil) }
+
+// snapshotFor: only the devices the one may see (nil = all)
+func (h *Hub) snapshotFor(who *Who) stateView {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	v := stateView{Broker: h.st, Now: time.Now(), Devices: []Device{}, Groups: map[string]string{}, History: h.influx != nil, Me: who}
+	see := func(id string) bool { return who == nil || who.CanSee(h.groups[id]) }
 	for k, g := range h.groups {
-		v.Groups[k] = g
+		if see(k) {
+			v.Groups[k] = g
+		}
+	}
+	if who != nil && !who.Admin {
+		v.Broker.User, v.Broker.Error = "", "" // the broker login is the admin's business
 	}
 	for _, d := range h.dev {
-		if d.LastSeen.IsZero() {
-			continue // only a command was sent to it; the device itself never spoke
+		if d.LastSeen.IsZero() || !see(d.ID) {
+			continue // only a command was sent to it (the device itself never spoke), or not for this user
 		}
 		c := *d
 		c.Topics = make(map[string]Value, len(d.Topics))
@@ -473,63 +507,36 @@ func (h *Hub) snapshot() stateView {
 	return v
 }
 
-// Handler: the page and the API; only the trusted networks (and loopback) get in.
-func (h *Hub) Handler(trusted []netip.Prefix) http.Handler {
-	m := http.NewServeMux()
-	m.HandleFunc("GET /{$}", func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "text/html; charset=utf-8")
-		w.Header().Set("Cache-Control", "no-cache")
-		w.Write(page)
-	})
-	m.HandleFunc("GET /history", func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "text/html; charset=utf-8")
-		w.Header().Set("Cache-Control", "no-cache")
-		w.Write(historyPage)
-	})
-	m.HandleFunc("GET /api/v1/state", func(w http.ResponseWriter, r *http.Request) { reply(w, 200, h.snapshot()) })
-	m.HandleFunc("GET /api/v1/history", func(w http.ResponseWriter, r *http.Request) {
-		if h.influx == nil {
-			reply(w, 404, map[string]string{"error": "the panel runs without --influx"})
-			return
-		}
-		x, err := h.influx.History(r.URL.Query().Get("dev"), r.URL.Query().Get("range"))
-		if err != nil {
-			reply(w, 400, map[string]string{"error": err.Error()})
-			return
-		}
-		reply(w, 200, x)
-	})
-	m.HandleFunc("PUT /api/v1/group", func(w http.ResponseWriter, r *http.Request) {
-		var in struct{ Dev, Group string }
-		if err := json.NewDecoder(io.LimitReader(r.Body, 1024)).Decode(&in); err != nil {
-			reply(w, 400, map[string]string{"error": "bad JSON"})
-			return
-		}
-		if err := h.SetGroup(in.Dev, in.Group); err != nil {
-			reply(w, 400, map[string]string{"error": err.Error()})
-			return
-		}
-		reply(w, 200, map[string]string{"ok": "saved"})
-	})
-	m.HandleFunc("POST /api/v1/cmd", func(w http.ResponseWriter, r *http.Request) {
-		var in struct{ Dev, Cmd string }
-		if err := json.NewDecoder(io.LimitReader(r.Body, 1024)).Decode(&in); err != nil {
-			reply(w, 400, map[string]string{"error": "bad JSON"})
-			return
-		}
-		if err := h.Send(in.Dev, in.Cmd); err != nil {
-			reply(w, 400, map[string]string{"error": err.Error()})
-			return
-		}
-		log.Printf("cmd from %s", r.RemoteAddr)
-		reply(w, 200, map[string]string{"ok": "sent"})
-	})
+// Handler: the page and the API for the trusted networks (and loopback): everyone there is the admin.
+// u (may be nil) gives the admin page of the users.
+func (h *Hub) Handler(trusted []netip.Prefix, u *Users) http.Handler {
+	lan := &Who{Name: "локальная сеть", Admin: true, Control: true}
+	m := h.routes(u)
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if !allowed(r.RemoteAddr, trusted) {
 			reply(w, 403, map[string]string{"error": "this address is not in the trusted networks"})
 			return
 		}
-		m.ServeHTTP(w, r)
+		m.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), whoKey{}, lan)))
+	})
+}
+
+// UsersHandler: the same page and API for anyone with a login (for a tunnel or the internet):
+// a user sees only the devices of their groups and may send commands only with "control".
+func (h *Hub) UsersHandler(u *Users) http.Handler {
+	m := h.routes(u)
+	open := map[string]bool{"/login": true, "/invite": true, "/api/v1/invite": true, "/logout": true}
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		who := u.FromRequest(r)
+		if who == nil && !open[r.URL.Path] {
+			if strings.HasPrefix(r.URL.Path, "/api/") {
+				reply(w, 401, map[string]string{"error": "log in first"})
+			} else {
+				http.Redirect(w, r, "/login", http.StatusSeeOther)
+			}
+			return
+		}
+		m.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), whoKey{}, who)))
 	})
 }
 

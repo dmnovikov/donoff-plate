@@ -9,7 +9,6 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
-	"strings"
 	"syscall"
 	"time"
 
@@ -25,8 +24,8 @@ func main() {
 	groups := flag.String("groups", "donoff-panel-groups.json", "file that keeps the groups of the devices (set on the page)")
 	poll := flag.Duration("poll", time.Minute, "ask the devices with a relay for sh hotter / sh cooler / sh tls this often (0 = never)")
 	influx := flag.String("influx", "influx.creds", "file with InfluxDB 2: lines url=, org=, bucket=, token= (\"\" = no history)")
-	tokenListen := flag.String("token-listen", "", "a second address of the page where everyone needs the token (for a tunnel, e.g. 127.0.0.1:8091)")
-	tokenFile := flag.String("token-file", "panel.token", "the token for --token-listen")
+	usersListen := flag.String("users-listen", "", "a second address of the page where everyone logs in (for a tunnel, e.g. 127.0.0.1:8091); a user sees only the devices of their groups")
+	usersFile := flag.String("users", "donoff-panel-users.json", "file of the users (made on the first start with the user admin and its invite link in the log; \"\" = no users)")
 	trusted := flag.String("trusted", "192.168.0.0/16", "networks that may open the page and send commands (loopback always)")
 	flag.Usage = func() {
 		fmt.Fprintf(os.Stderr, "donoff-panel %s: devices of /<user>/+/out/#, commands to /<user>/<dev_id>/in/params\n\n", version)
@@ -85,24 +84,31 @@ func main() {
 	h.Start()
 	stopPoll := make(chan struct{})
 	go h.Poll(*poll, stopPoll)
-	srv := &http.Server{Addr: *listen, Handler: h.Handler(nets), ReadHeaderTimeout: 10 * time.Second}
-	var tsrv *http.Server
-	if *tokenListen != "" {
-		b, err := os.ReadFile(*tokenFile)
+	srv := &http.Server{Addr: *listen, ReadHeaderTimeout: 10 * time.Second}
+	var users *panel.Users
+	if *usersFile != "" {
+		u, invite, err := panel.LoadUsers(*usersFile)
 		if err != nil {
 			log.Fatal(err)
 		}
-		tok := strings.TrimSpace(string(b))
-		if len(tok) < 16 {
-			log.Fatalf("%s: the token is shorter than 16 characters", *tokenFile)
+		users = u
+		if invite != "" {
+			log.Printf("users: made %s with the user admin; set its password at <the page>/invite?t=%s (valid 7 days)", *usersFile, invite)
 		}
-		tsrv = &http.Server{Addr: *tokenListen, Handler: panel.TokenGate(tok, h.Handler(nets)), ReadHeaderTimeout: 10 * time.Second}
+	}
+	srv.Handler = h.Handler(nets, users)
+	var tsrv *http.Server
+	if *usersListen != "" {
+		if users == nil {
+			log.Fatal("--users-listen needs --users")
+		}
+		tsrv = &http.Server{Addr: *usersListen, Handler: h.UsersHandler(users), ReadHeaderTimeout: 10 * time.Second}
 		go func() {
 			if err := tsrv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 				log.Fatal(err)
 			}
 		}()
-		log.Printf("page with the token on %s", *tokenListen)
+		log.Printf("page with logins on %s", *usersListen)
 	}
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()

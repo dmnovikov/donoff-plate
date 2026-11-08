@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>donoff login</title>
+<style>
+:root { --bg: #f4f5f8; --card: #ffffff; --text: #1d2330; --muted: #687187; --line: #e1e4ea; --soft: #f0f2f6; --accent: #2563eb; --bad: #c2410c; }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --bg: #12151b; --card: #1b2029; --text: #e3e7ee; --muted: #8b94a7; --line: #2b323e; --soft: #232a35; --accent: #6c9cff; --bad: #fb923c; } }
+:root[data-theme="dark"] { --bg: #12151b; --card: #1b2029; --text: #e3e7ee; --muted: #8b94a7; --line: #2b323e; --soft: #232a35; --accent: #6c9cff; --bad: #fb923c; }
+* { box-sizing: border-box; }
+body { margin: 0; min-height: 100vh; display: grid; place-items: center; background: var(--bg); color: var(--text); font: 15px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; padding: 16px; }
+form { width: min(340px, 100%); display: grid; gap: 10px; background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 20px; }
+h1 { font-size: 18px; margin: 0 0 4px; }
+.q { color: var(--muted); font-size: 13px; }
+input, button { font: inherit; padding: 9px 11px; border-radius: 8px; border: 1px solid var(--line); background: var(--soft); color: var(--text); }
+button { background: var(--accent); border-color: var(--accent); color: #fff; cursor: pointer; }
+.e { color: var(--bad); font-size: 13px; min-height: 1.2em; }
+</style>
+</head>
+<body>
+<form id="login" method="post" action="/login" hidden>
+  <h1>donoff — вход</h1>
+  <input name="name" placeholder="имя" autocomplete="username" required autofocus>
+  <input name="password" type="password" placeholder="пароль" autocomplete="current-password" required>
+  <button>Войти</button>
+  <div class="e" id="le"></div>
+  <div class="q">Нет пароля или забыли его — попросите у админа ссылку-приглашение.</div>
+</form>
+<form id="invite" hidden>
+  <h1>donoff — пароль</h1>
+  <div class="q" id="iname">проверяю ссылку…</div>
+  <input type="text" id="iuser" autocomplete="username" hidden>
+  <input id="p1" type="password" placeholder="новый пароль (от 8 символов)" autocomplete="new-password" minlength="8" required>
+  <input id="p2" type="password" placeholder="ещё раз" autocomplete="new-password" minlength="8" required>
+  <button>Сохранить и войти</button>
+  <div class="e" id="ie"></div>
+</form>
+<script>
+const $ = id => document.getElementById(id);
+const q = new URLSearchParams(location.search);
+if (location.pathname === '/invite') {
+  const f = $('invite'), t = q.get('t') || '';
+  f.hidden = false;
+  fetch('/api/v1/invite?t=' + encodeURIComponent(t)).then(r => r.json().then(j => ({ ok: r.ok, j }))).then(({ ok, j }) => {
+    if (!ok) { $('iname').textContent = ''; $('ie').textContent = j.error || 'ссылка недействительна'; f.querySelector('button').disabled = true; return; }
+    $('iname').textContent = `Пользователь: ${j.name}. Задайте пароль — по ссылке это можно сделать один раз.`;
+    $('iuser').value = j.name;
+  });
+  f.onsubmit = async e => {
+    e.preventDefault();
+    if ($('p1').value !== $('p2').value) { $('ie').textContent = 'пароли не совпадают'; return; }
+    const r = await fetch('/api/v1/invite', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ token: t, password: $('p1').value }) });
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok) { $('ie').textContent = j.error || r.statusText; return; }
+    location.href = '/';
+  };
+} else {
+  $('login').hidden = false;
+  if (q.get('e')) $('le').textContent = 'неверное имя или пароль (или слишком много попыток — подождите минуту)';
+}
+</script>
+</body>
+</html>

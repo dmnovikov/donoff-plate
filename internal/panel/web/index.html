@@ -21,6 +21,10 @@ header { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 16px; pad
 header h1 { font-size: 18px; margin: 0; }
 header .meta { color: var(--muted); font-size: 13px; }
 header input { margin-left: auto; width: 200px; }
+header #who { display: flex; gap: 10px; align-items: center; }
+header #who a, header #who button { color: var(--accent); text-decoration: none; background: none; border: 0; font: inherit; padding: 0; cursor: pointer; }
+body.viewer .ctl .row:not(.ask), body.viewer .schctl { display: none; }
+body:not(.admin) .grprow { display: none; }
 main { max-width: 1400px; margin: 0 auto; padding: 16px; }
 .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(330px, 1fr)); gap: 14px; align-items: start; }
 .card { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px; min-width: 0; }
@@ -108,11 +112,12 @@ summary { cursor: pointer; color: var(--accent); font-size: 13px; user-select: n
   <span class="meta"><span class="dot" id="bdot"></span> <span id="broker">…</span></span>
   <span class="meta" id="count"></span>
   <input type="search" id="filter" placeholder="фильтр по устройству">
+  <span class="meta" id="who"></span>
 </header>
 <main>
   <div id="groups"></div>
   <datalist id="grouplist"></datalist>
-  <div class="empty" id="empty" hidden>Устройств пока нет — жду сообщений от брокера…</div>
+  <div class="empty" id="empty" hidden>Устройств пока нет — жду сообщений от брокера… (пользователь видит только устройства своих групп)</div>
 </main>
 <script>
 const $ = id => document.getElementById(id);
@@ -347,9 +352,9 @@ function makeCard(id) {
         <div class="row"><label>Гистерезис, °C</label><input type="number" class="hy" step="0.1" min="0" max="20"><button class="btn primary" data-a="hy">Задать</button></div>
         <div class="schctl"></div>
         <div class="row"><label>Режим</label><button class="btn" data-a="cool">❄ Охлаждение</button><button class="btn" data-a="heat">🔥 Нагрев</button><button class="btn" data-a="autooff">Выкл авто</button></div>
-        <div class="row"><label>Запросить</label><button class="btn" data-q="sh tlevels">уставки</button><button class="btn" data-a="askmode">режим</button><button class="btn" data-q="sh time">время</button><button class="btn" data-q="sh ip">ip</button></div>
+        <div class="row ask"><label>Запросить</label><button class="btn" data-q="sh tlevels">уставки</button><button class="btn" data-a="askmode">режим</button><button class="btn" data-q="sh time">время</button><button class="btn" data-q="sh ip">ip</button></div>
         <div class="row"><input type="text" class="raw" placeholder="своя команда, напр. sh r1"><button class="btn" data-a="raw">Отправить</button></div>
-        <div class="row"><label>Группа</label><input type="text" class="grp" list="grouplist" placeholder="без группы"><button class="btn" data-a="grp">Сохранить</button></div>
+        <div class="row grprow"><label>Группа</label><input type="text" class="grp" list="grouplist" placeholder="без группы"><button class="btn" data-a="grp">Сохранить</button></div>
       </div>
     </details>
     <div class="err"></div>
@@ -449,12 +454,19 @@ async function refresh() {
   try { s = await api('/api/v1/state'); } catch (e) { $('bdot').className = 'dot bad'; $('broker').textContent = 'нет связи с панелью: ' + e.message; return; }
   now = new Date(s.now);
   $('bdot').className = 'dot ' + (s.broker.connected ? 'ok' : 'bad');
-  $('broker').textContent = `${s.broker.user}@${s.broker.server}` + (s.broker.connected ? '' : ' — ' + (s.broker.error || 'подключение…'));
+  $('broker').textContent = (s.broker.user ? `${s.broker.user}@` : '') + s.broker.server + (s.broker.connected ? '' : ' — ' + (s.broker.error || 'подключение…'));
   const f = $('filter').value.trim().toLowerCase();
   const devs = (s.devices || []).filter(d => !f || d.id.toLowerCase().includes(f));
   $('count').textContent = `устройств: ${(s.devices || []).length}`;
   groups = s.groups || {};
   hasHistory = !!s.history;
+  const me = s.me || { admin: true, control: true };
+  document.body.classList.toggle('admin', !!me.admin);
+  document.body.classList.toggle('viewer', !me.control);
+  const whoHtml = (me.name ? `<span>${esc(me.name)}${me.admin ? ' · админ' : me.control ? '' : ' · просмотр'}</span>` : '')
+    + (me.admin && s.users ? '<a href="/admin">Пользователи</a>' : '')
+    + (me.session ? '<form method="post" action="/logout" style="display:inline"><button>Выйти</button></form>' : '');
+  if ($('who').dataset.html !== whoHtml) { $('who').innerHTML = whoHtml; $('who').dataset.html = whoHtml; }
   const names = [...new Set(Object.values(groups))].sort((x, y) => x.localeCompare(y, 'ru'));
   $('grouplist').innerHTML = names.map(n => `<option value="${esc(n)}">`).join('');
   const by = new Map(names.map(n => [n, []]));

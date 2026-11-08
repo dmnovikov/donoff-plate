@@ -1,0 +1,127 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>donoff users</title>
+<style>
+:root { --bg: #f4f5f8; --card: #ffffff; --text: #1d2330; --muted: #687187; --line: #e1e4ea; --soft: #f0f2f6; --accent: #2563eb; --bad: #c2410c; --ok: #15803d; }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --bg: #12151b; --card: #1b2029; --text: #e3e7ee; --muted: #8b94a7; --line: #2b323e; --soft: #232a35; --accent: #6c9cff; --bad: #fb923c; --ok: #4ade80; } }
+:root[data-theme="dark"] { --bg: #12151b; --card: #1b2029; --text: #e3e7ee; --muted: #8b94a7; --line: #2b323e; --soft: #232a35; --accent: #6c9cff; --bad: #fb923c; --ok: #4ade80; }
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--text); font: 14px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+header { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; padding: 12px 16px; background: var(--card); border-bottom: 1px solid var(--line); position: sticky; top: 0; z-index: 2; }
+header a { color: var(--accent); text-decoration: none; }
+header h1 { font-size: 18px; margin: 0; }
+main { max-width: 1000px; margin: 0 auto; padding: 14px 16px 30px; display: grid; gap: 12px; }
+.box { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px; }
+.box h2 { font-size: 15px; margin: 0 0 8px; display: flex; flex-wrap: wrap; gap: 6px 10px; align-items: baseline; }
+.q { color: var(--muted); font-size: 12px; }
+.row { display: flex; flex-wrap: wrap; gap: 6px 14px; align-items: center; margin: 6px 0; }
+.chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.chips label { border: 1px solid var(--line); border-radius: 999px; padding: 2px 10px; background: var(--soft); cursor: pointer; font-size: 13px; }
+.chips label:has(input:checked) { border-color: var(--accent); color: var(--accent); }
+.chips input { margin: 0 5px 0 0; vertical-align: -1px; }
+input[type=text] { padding: 5px 9px; font: inherit; color: var(--text); background: var(--soft); border: 1px solid var(--line); border-radius: 6px; min-width: 0; }
+.btn { padding: 4px 11px; font: inherit; font-size: 13px; border-radius: 6px; border: 1px solid var(--line); background: var(--soft); color: var(--text); cursor: pointer; }
+.btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+.btn.danger { color: var(--bad); }
+.link { display: flex; gap: 6px; margin-top: 6px; }
+.link input { flex: 1; font-family: ui-monospace, Menlo, monospace; font-size: 12px; }
+.err { color: var(--bad); font-size: 13px; min-height: 1em; }
+.ok { color: var(--ok); }
+.tag { font-size: 11px; border-radius: 4px; padding: 0 6px; border: 1px solid var(--line); color: var(--muted); }
+.tag.a { color: var(--accent); border-color: var(--accent); }
+</style>
+</head>
+<body>
+<header><a href="/">← Устройства</a><h1>Пользователи</h1><span class="q" id="me"></span></header>
+<main>
+  <div class="box">
+    <h2>Как это работает</h2>
+    <div class="q">Админ видит все устройства. Пользователь видит только устройства тех групп, что ему отмечены (группу устройству задаёт админ в «Управлении» карточки). «Управление» разрешает команды; без него — только смотреть.
+    Новому пользователю даётся одноразовая ссылка: по ней он сам задаёт пароль. Та же кнопка сбрасывает забытый пароль. Ссылка действует 7 дней.</div>
+    <div class="row"><span class="q">Адрес панели для ссылок:</span><input type="text" id="base" style="flex:1;min-width:220px"></div>
+  </div>
+  <div class="box">
+    <h2>Новый пользователь</h2>
+    <div class="row"><input type="text" id="nname" placeholder="имя (латиница, 2–32)"><label><input type="checkbox" id="ncontrol" checked> управление</label><label><input type="checkbox" id="nadmin"> админ</label></div>
+    <div class="chips" id="ngroups"></div>
+    <div class="row"><button class="btn primary" id="add">Создать и получить ссылку</button></div>
+    <div id="nlink"></div>
+    <div class="err" id="nerr"></div>
+  </div>
+  <div id="users"></div>
+</main>
+<script>
+const $ = id => document.getElementById(id);
+const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+async function api(path, opts = {}) {
+  const r = await fetch(path, { ...opts, headers: { 'Content-Type': 'application/json' } });
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(j.error || r.statusText);
+  return j;
+}
+let base = ''; try { base = localStorage.getItem('donoff-base') || ''; } catch (e) {}
+$('base').value = base || location.origin;
+$('base').oninput = () => { try { localStorage.setItem('donoff-base', $('base').value.trim()); } catch (e) {} };
+const linkHtml = t => { const u = $('base').value.trim().replace(/\/$/, '') + '/invite?t=' + t;
+  return `<div class="link"><input type="text" readonly value="${esc(u)}"><button class="btn" data-copy>копировать</button></div><div class="q">Отправьте эту ссылку пользователю. Она одноразовая, действует 7 дней.</div>`; };
+document.addEventListener('click', e => { const b = e.target.closest('[data-copy]'); if (!b) return; const i = b.parentElement.querySelector('input'); i.select(); navigator.clipboard?.writeText(i.value); b.textContent = 'скопировано'; });
+const chips = (all, sel, name) => all.length ? all.map(g => `<label><input type="checkbox" name="${name}" value="${esc(g)}"${sel.includes(g) ? ' checked' : ''}>${esc(g)}</label>`).join('')
+  : '<span class="q">групп пока нет — задайте группы устройствам в «Управлении» их карточек</span>';
+const picked = (el, name) => [...el.querySelectorAll(`input[name="${name}"]:checked`)].map(i => i.value);
+const dt = t => new Date(t).toLocaleString('ru-RU', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
+
+let data = null;
+async function load() {
+  data = await api('/api/v1/users');
+  $('me').textContent = `вы: ${data.me.name}`;
+  $('ngroups').innerHTML = chips(data.groups, [], 'ng');
+  $('users').innerHTML = data.users.map(u => `
+    <div class="box" data-u="${esc(u.name)}">
+      <h2>${esc(u.name)} ${u.admin ? '<span class="tag a">админ</span>' : ''} ${u.has_password ? '' : '<span class="tag">пароль не задан</span>'}
+        ${u.invite_until ? `<span class="q">ссылка действует до ${dt(u.invite_until)}</span>` : ''}</h2>
+      <div class="row"><label><input type="checkbox" class="control"${u.control ? ' checked' : ''}${u.admin ? ' disabled' : ''}> управление (команды устройствам)</label>
+        <label><input type="checkbox" class="admin"${u.admin ? ' checked' : ''}> админ (видит всё)</label></div>
+      <div class="q">Видит группы:</div>
+      <div class="chips">${chips(data.groups, u.groups, 'g')}</div>
+      <div class="row">
+        <button class="btn primary" data-a="save">Сохранить</button>
+        <button class="btn" data-a="invite">${u.has_password ? 'Ссылка для сброса пароля' : 'Новая ссылка-приглашение'}</button>
+        <button class="btn" data-a="logout">Выйти на всех устройствах</button>
+        <button class="btn danger" data-a="del">Удалить</button>
+      </div>
+      <div class="lnk"></div><div class="err"></div>
+    </div>`).join('');
+}
+$('users').addEventListener('click', async e => {
+  const b = e.target.closest('button[data-a]'); if (!b) return;
+  const box = b.closest('[data-u]'), name = box.dataset.u, err = box.querySelector('.err');
+  const p = encodeURIComponent(name);
+  try {
+    if (b.dataset.a === 'save') {
+      await api(`/api/v1/users/${p}`, { method: 'PUT', body: JSON.stringify({ admin: box.querySelector('.admin').checked, control: box.querySelector('.control').checked, groups: picked(box, 'g') }) });
+      await load(); return;
+    }
+    if (b.dataset.a === 'invite') {
+      if (!confirm(`${name}: сделать новую ссылку? Старая ссылка перестанет работать; текущий пароль работает, пока по ссылке не задан новый.`)) return;
+      const j = await api(`/api/v1/users/${p}/invite`, { method: 'POST' }); await load();
+      document.querySelector(`[data-u="${CSS.escape(name)}"] .lnk`).innerHTML = linkHtml(j.invite); return;
+    }
+    if (b.dataset.a === 'logout') { if (!confirm(`${name}: завершить все сессии?`)) return; await api(`/api/v1/users/${p}/logout`, { method: 'POST' }); err.innerHTML = '<span class="ok">сессии завершены</span>'; return; }
+    if (b.dataset.a === 'del') { if (!confirm(`Удалить пользователя ${name}?`)) return; await api(`/api/v1/users/${p}`, { method: 'DELETE' }); await load(); }
+  } catch (x) { err.textContent = x.message; }
+});
+$('users').addEventListener('change', e => { if (e.target.classList.contains('admin')) { const c = e.target.closest('[data-u]').querySelector('.control'); c.disabled = e.target.checked; if (e.target.checked) c.checked = true; } });
+$('add').onclick = async () => {
+  $('nerr').textContent = ''; $('nlink').innerHTML = '';
+  try {
+    const j = await api('/api/v1/users', { method: 'POST', body: JSON.stringify({ name: $('nname').value.trim(), admin: $('nadmin').checked, control: $('ncontrol').checked, groups: picked($('ngroups'), 'ng') }) });
+    $('nname').value = ''; await load(); $('nlink').innerHTML = linkHtml(j.invite);
+  } catch (x) { $('nerr').textContent = x.message; }
+};
+load().catch(e => { $('users').innerHTML = `<div class="err">${esc(e.message)}</div>`; });
+</script>
+</body>
+</html>
