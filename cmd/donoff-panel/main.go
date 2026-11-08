@@ -21,6 +21,7 @@ var version = "dev"
 func main() {
 	creds := flag.String("creds", "mqtt.creds", "file with the broker: lines host, user, password [, port]")
 	listen := flag.String("listen", ":8090", "address of the page")
+	devices := flag.String("devices", "donoff-panel-devices.json", "file that keeps the last state of the devices over restarts (\"\" = none)")
 	groups := flag.String("groups", "donoff-panel-groups.json", "file that keeps the groups of the devices (set on the page)")
 	poll := flag.Duration("poll", time.Minute, "ask the devices with a relay for sh hotter / sh cooler / sh tls this often (0 = never)")
 	influx := flag.String("influx", "influx.creds", "file with InfluxDB 2: lines url=, org=, bucket=, token= (\"\" = no history)")
@@ -48,6 +49,16 @@ func main() {
 	}
 
 	h := panel.New(c)
+	stopKeep := make(chan struct{})
+	keepDone := make(chan struct{})
+	if *devices != "" {
+		if err := h.LoadDevices(*devices); err != nil {
+			log.Fatal(err)
+		}
+		go func() { h.KeepDevices(*devices, time.Minute, stopKeep); close(keepDone) }()
+	} else {
+		close(keepDone)
+	}
 	if err := h.LoadGroups(*groups); err != nil {
 		log.Fatal(err)
 	}
@@ -64,6 +75,9 @@ func main() {
 			log.Fatalf("%s: %v", *influx, err)
 		}
 		h.SetInflux(x)
+		if err := h.Seed(x); err != nil {
+			log.Printf("history: the last values of the silent devices: %v", err)
+		}
 		influxDone = make(chan struct{})
 		go func() { x.Run(stopInflux); close(influxDone) }()
 		log.Printf("history: InfluxDB %s, org %s, bucket %s", x.URL, x.Org, x.Bucket)
@@ -107,6 +121,8 @@ func main() {
 	}
 	close(stopPoll)
 	h.Stop()
+	close(stopKeep)
+	<-keepDone
 	close(stopInflux)
 	<-influxDone // the last points
 }

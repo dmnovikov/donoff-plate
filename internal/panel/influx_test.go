@@ -68,6 +68,16 @@ func TestHistoryLive(t *testing.T) {
 	}
 	defer x.do("/api/v2/delete", map[string][]string{"bucket": {x.Bucket}}, "application/json", "",
 		`{"start":"2000-01-01T00:00:00Z","stop":"2100-01-01T00:00:00Z","predicate":"dev=\"panel-test\""}`)
+	hub := New(Creds{User: "donoff"})
+	if err := hub.Seed(x); err != nil {
+		t.Fatal(err)
+	}
+	hub.mu.Lock()
+	_, seeded := hub.dev["panel-test"]
+	hub.mu.Unlock()
+	if seeded {
+		t.Fatal("panel-test must not be seeded")
+	}
 	h, err := x.History("panel-test", "6h")
 	if err != nil {
 		t.Fatal(err)

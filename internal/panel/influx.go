@@ -336,3 +336,45 @@ func tempOrder(n string) string {
 	}
 	return "2" + n
 }
+
+// Seed adds the devices that are in InfluxDB for the last 30 days but unknown to the hub, with
+// their last values, so that a device silent since the start of the panel is still on the page.
+func (h *Hub) Seed(x *Influx) error {
+	rows, err := x.query(fmt.Sprintf(`from(bucket: %q) |> range(start: -30d) |> filter(fn: (r) => r._measurement == "sensor" or r._measurement == "relay")
+  |> last() |> keep(columns: ["_time", "_value", "_measurement", "dev", "name"])`, x.Bucket))
+	if err != nil {
+		return err
+	}
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	known := map[string]bool{}
+	for id := range h.dev {
+		known[id] = true
+	}
+	for _, m := range rows {
+		id, n := m["dev"], m["name"]
+		if known[id] || !devRe.MatchString(id) || n == "" || id == "panel-test" {
+			continue
+		}
+		t, err := time.Parse(time.RFC3339Nano, m["_time"])
+		if err != nil {
+			continue
+		}
+		v := m["_value"]
+		topic := "sensors/" + n
+		if m["_measurement"] == "relay" {
+			topic = "relays/" + n
+			if !strings.HasPrefix(n, "r") { // the old bare bN
+				topic = n
+			}
+		} else if f, err := strconv.ParseFloat(v, 64); err == nil {
+			v = strconv.FormatFloat(f, 'f', 2, 64)
+		}
+		d := h.device(id)
+		d.Topics[topic] = Value{V: v, At: t}
+		if t.After(d.LastSeen) {
+			d.LastSeen = t
+		}
+	}
+	return nil
+}

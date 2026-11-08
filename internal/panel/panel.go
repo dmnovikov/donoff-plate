@@ -93,10 +93,12 @@ type Device struct {
 	ID        string           `json:"id"`
 	LastSeen  time.Time        `json:"last_seen"`
 	Topics    map[string]Value `json:"topics"` // after "/out/": "sensors/temp_in", "relays/r1", "time_up", ...
+	Params    map[string]Value `json:"params"` // the last known answers: hotter, cooler, tls, time, lschm1, lschm2, cschm1, cschm2
 	Info      []Msg            `json:"info"`   // /out/info answers and the commands sent, newest last
 	Log       []Msg            `json:"log"`    // /out/log
 	lastCmd   time.Time
 	autoUntil time.Time // answers before it belong to the periodic poll
+	lastAsk   string    // the last "sh ..." sent: "sh cschm1" answers only with the bits
 }
 
 type BrokerState struct {
@@ -226,7 +228,7 @@ func (h *Hub) Stop() {
 func (h *Hub) device(id string) *Device {
 	d := h.dev[id]
 	if d == nil {
-		d = &Device{ID: id, Topics: map[string]Value{}}
+		d = &Device{ID: id, Topics: map[string]Value{}, Params: map[string]Value{}}
 		h.dev[id] = d
 	}
 	return d
@@ -256,7 +258,13 @@ func (h *Hub) onMessage(prefix, topic, payload string) {
 	d.LastSeen = now
 	switch sub {
 	case "info":
-		d.Info = push(d.Info, Msg{At: now, Text: payload, Auto: now.Before(d.autoUntil) && pollAnswer.MatchString(payload)})
+		key := paramKey(payload, d.lastAsk)
+		if key != "" {
+			d.Params[key] = Value{V: strings.TrimSpace(payload), At: now}
+		}
+		if key == "" || !now.Before(d.autoUntil) { // the answers to the poll stay out of the feed
+			d.Info = push(d.Info, Msg{At: now, Text: payload})
+		}
 	case "log":
 		d.Log = push(d.Log, Msg{At: now, Text: payload})
 	default:
@@ -274,12 +282,77 @@ var devRe = regexp.MustCompile(`^[A-Za-z0-9_.-]{1,32}$`)
 // Send publishes one command to the device.
 func (h *Hub) Send(dev, cmd string) error { return h.send(dev, cmd, false) }
 
-// the periodic poll: the relay mode and the levels of every device with a relay
+// the periodic poll: the clock of every device; the thermostat mode, the levels and the
+// schedules (lschm1/2 with aofs1/2 — seconds on at the start of every hour, for watering — and the custom ones cschm1/2 when a relay uses them) of the devices with a relay
 var (
-	pollCmds   = []string{"sh hotter", "sh cooler", "sh tls"}
-	pollAnswer = regexp.MustCompile(`^(hotter=\d+|cooler=\d+|C=-?\d+.*dT=-?\d+)$`)
 	relayTopic = regexp.MustCompile(`^(relays/r\d+|b\d+)$`)
+	answers    = []struct {
+		re  *regexp.Regexp
+		key string
+	}{
+		{regexp.MustCompile(`^hotter=\d+$`), "hotter"},
+		{regexp.MustCompile(`^cooler=\d+$`), "cooler"},
+		{regexp.MustCompile(`^C=-?\d+.*dT=-?\d+$`), "tls"},
+		{regexp.MustCompile(`^I:S=\d+,T=`), "time"},
+		{regexp.MustCompile(`^(lschm1?|schm1)=\d+$`), "lschm1"},
+		{regexp.MustCompile(`^(lschm2|l2schm|schm2)=\d+$`), "lschm2"},
+		{regexp.MustCompile(`^aofs1?=\d+$`), "aofs1"},
+		{regexp.MustCompile(`^(aofs2|a2ofs)=\d+$`), "aofs2"},
+	}
+	bitsAnswer = regexp.MustCompile(`^[01]{4}( [01]{4}){5}$`)
 )
+
+// paramKey: which known parameter the /out/info message answers ("" = none)
+func paramKey(text, lastAsk string) string {
+	text = strings.TrimSpace(text)
+	for _, a := range answers {
+		if a.re.MatchString(text) {
+			return a.key
+		}
+	}
+	if bitsAnswer.MatchString(text) && (lastAsk == "sh cschm1" || lastAsk == "sh cschm2") {
+		return lastAsk[3:]
+	}
+	return ""
+}
+
+// pollCmds is what the poll asks a device now
+func (h *Hub) pollCmds(id string) []string {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	d := h.dev[id]
+	if d == nil {
+		return nil
+	}
+	cmds := []string{"sh time"}
+	nrel := 0
+	for k := range d.Topics {
+		if relayTopic.MatchString(k) {
+			nrel++
+		}
+	}
+	if nrel == 0 {
+		return cmds
+	}
+	cmds = append(cmds, "sh hotter", "sh cooler", "sh tls", "sh lschm", "sh aofs") // "lschm1" is not known to the old firmware
+	if nrel > 1 {
+		cmds = append(cmds, "sh lschm2", "sh aofs2")
+	}
+	used := map[string]bool{}
+	for _, k := range []string{"lschm1", "lschm2"} {
+		if v, ok := d.Params[k]; ok {
+			_, n, _ := strings.Cut(v.V, "=")
+			used[n] = true
+		}
+	}
+	if used["99"] {
+		cmds = append(cmds, "sh cschm1")
+	}
+	if used["100"] {
+		cmds = append(cmds, "sh cschm2")
+	}
+	return cmds
+}
 
 const (
 	pollGap   = 1500 * time.Millisecond
@@ -291,7 +364,7 @@ func (h *Hub) Poll(period time.Duration, stop <-chan struct{}) {
 	if period <= 0 {
 		return
 	}
-	log.Printf("poll: %v every %v, devices with a relay", pollCmds, period)
+	log.Printf("poll: sh time (every device), sh hotter/cooler/tls/lschm/aofs/lschm2/aofs2 [cschm1/2] (devices with a relay) every %v", period)
 	tick := time.NewTicker(period)
 	defer tick.Stop()
 	for {
@@ -302,7 +375,7 @@ func (h *Hub) Poll(period time.Duration, stop <-chan struct{}) {
 		}
 		for _, id := range h.pollTargets() {
 			go func(id string) {
-				for i, c := range pollCmds {
+				for i, c := range h.pollCmds(id) {
 					if i > 0 {
 						time.Sleep(pollGap)
 					}
@@ -321,14 +394,8 @@ func (h *Hub) pollTargets() []string {
 	defer h.mu.Unlock()
 	var ids []string
 	for id, d := range h.dev {
-		if d.LastSeen.IsZero() || time.Since(d.LastSeen) > pollFresh {
-			continue
-		}
-		for k := range d.Topics {
-			if relayTopic.MatchString(k) {
-				ids = append(ids, id)
-				break
-			}
+		if !d.LastSeen.IsZero() && time.Since(d.LastSeen) <= pollFresh {
+			ids = append(ids, id)
 		}
 	}
 	sort.Strings(ids)
@@ -352,6 +419,7 @@ func (h *Hub) send(dev, cmd string, auto bool) error {
 		return fmt.Errorf("the device takes one command a second: wait %.1f s", wait.Seconds())
 	}
 	d.lastCmd = time.Now()
+	d.lastAsk = cmd
 	if auto {
 		d.autoUntil = d.lastCmd.Add(3 * time.Second)
 	} else {
@@ -392,6 +460,10 @@ func (h *Hub) snapshot() stateView {
 		c.Topics = make(map[string]Value, len(d.Topics))
 		for k, x := range d.Topics {
 			c.Topics[k] = x
+		}
+		c.Params = make(map[string]Value, len(d.Params))
+		for k, x := range d.Params {
+			c.Params[k] = x
 		}
 		c.Info = append([]Msg{}, d.Info...) // [] and not null in the JSON
 		c.Log = append([]Msg{}, d.Log...)
@@ -503,4 +575,68 @@ func ParseNets(s string) ([]netip.Prefix, error) {
 		out = append(out, p.Masked())
 	}
 	return out, nil
+}
+
+// LoadDevices reads the devices kept by SaveDevices, so that a device silent since the restart
+// is still shown (gray, "last seen ..."); a missing file is no devices.
+func (h *Hub) LoadDevices(path string) error {
+	b, err := os.ReadFile(path)
+	if errors.Is(err, os.ErrNotExist) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	var list []Device
+	if err := json.Unmarshal(b, &list); err != nil {
+		return fmt.Errorf("%s: %w", path, err)
+	}
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	for _, d := range list {
+		if !devRe.MatchString(d.ID) || d.LastSeen.IsZero() {
+			continue
+		}
+		c := d
+		if c.Topics == nil {
+			c.Topics = map[string]Value{}
+		}
+		if c.Params == nil {
+			c.Params = map[string]Value{}
+		}
+		h.dev[c.ID] = &c
+	}
+	return nil
+}
+
+// SaveDevices writes the last state of every device (atomically).
+func (h *Hub) SaveDevices(path string) error {
+	b, err := json.Marshal(h.snapshot().Devices)
+	if err != nil {
+		return err
+	}
+	tmp := path + ".tmp"
+	if err := os.WriteFile(tmp, b, 0o644); err != nil {
+		return err
+	}
+	return os.Rename(tmp, path)
+}
+
+// KeepDevices saves the devices every period until stop is closed, and once more at the end.
+func (h *Hub) KeepDevices(path string, period time.Duration, stop <-chan struct{}) {
+	tick := time.NewTicker(period)
+	defer tick.Stop()
+	for {
+		select {
+		case <-tick.C:
+		case <-stop:
+			if err := h.SaveDevices(path); err != nil {
+				log.Printf("devices: %v", err)
+			}
+			return
+		}
+		if err := h.SaveDevices(path); err != nil {
+			log.Printf("devices: %v", err)
+		}
+	}
 }

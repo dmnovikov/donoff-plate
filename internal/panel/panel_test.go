@@ -93,22 +93,80 @@ func TestGroups(t *testing.T) {
 	}
 }
 
-func TestPollTargetsAndAutoAnswers(t *testing.T) {
+func TestPollAndParams(t *testing.T) {
 	h := New(Creds{User: "donoff"})
 	p := "/donoff/"
 	h.onMessage(p, "/donoff/dmzk10/out/relays/r1", "0")
-	h.onMessage(p, "/donoff/dmzk13/out/b1", "0")
-	h.onMessage(p, "/donoff/t14/out/sensors/pzem_power", "680") // no relay: not asked
-	if got := strings.Join(h.pollTargets(), ","); got != "dmzk10,dmzk13" {
+	h.onMessage(p, "/donoff/h2/out/relays/r1", "0")
+	h.onMessage(p, "/donoff/h2/out/relays/r2", "0")
+	h.onMessage(p, "/donoff/t14/out/sensors/pzem_power", "680")
+	if got := strings.Join(h.pollTargets(), ","); got != "dmzk10,h2,t14" {
 		t.Fatalf("targets: %s", got)
 	}
+	for id, want := range map[string]string{
+		"t14":    "sh time",
+		"dmzk10": "sh time,sh hotter,sh cooler,sh tls,sh lschm,sh aofs",
+		"h2":     "sh time,sh hotter,sh cooler,sh tls,sh lschm,sh aofs,sh lschm2,sh aofs2",
+	} {
+		if got := strings.Join(h.pollCmds(id), ","); got != want {
+			t.Errorf("%s: %s, want %s", id, got, want)
+		}
+	}
+	// the poll answers go to the params and stay out of the feed; other messages go to the feed
 	h.mu.Lock()
-	h.dev["dmzk10"].autoUntil = time.Now().Add(time.Second)
+	h.dev["h2"].autoUntil = time.Now().Add(time.Second)
 	h.mu.Unlock()
-	h.onMessage(p, "/donoff/dmzk10/out/info", "hotter=1")
-	h.onMessage(p, "/donoff/dmzk10/out/info", "something else")
-	info := h.snapshot().Devices[0].Info
-	if !info[0].Auto || info[1].Auto {
-		t.Fatalf("auto flags: %+v", info)
+	for _, m := range []string{"hotter=0", "lschm1=99", "lschm2=100", "aofs=30", "a2ofs=0", "I:S=1,T=17:5:2026", "something else"} {
+		h.onMessage(p, "/donoff/h2/out/info", m)
+	}
+	h.mu.Lock()
+	h.dev["h2"].lastAsk = "sh cschm1"
+	h.mu.Unlock()
+	h.onMessage(p, "/donoff/h2/out/info", "0000 0000 0011 1111 1111 1100")
+	h.mu.Lock()
+	h.dev["h2"].lastAsk = "sh tls"
+	h.mu.Unlock()
+	h.onMessage(p, "/donoff/h2/out/info", "1111 1111 1111 1111 1111 1111") // not after sh cschmN: not a scheme
+	var d Device
+	for _, x := range h.snapshot().Devices {
+		if x.ID == "h2" {
+			d = x
+		}
+	}
+	for k, want := range map[string]string{"hotter": "hotter=0", "lschm1": "lschm1=99", "lschm2": "lschm2=100", "aofs1": "aofs=30", "aofs2": "a2ofs=0", "time": "I:S=1,T=17:5:2026", "cschm1": "0000 0000 0011 1111 1111 1100"} {
+		if d.Params[k].V != want {
+			t.Errorf("param %s = %q, want %q", k, d.Params[k].V, want)
+		}
+	}
+	if len(d.Info) != 2 || d.Info[0].Text != "something else" {
+		t.Fatalf("feed: %+v", d.Info)
+	}
+	if got := strings.Join(h.pollCmds("h2"), ","); !strings.HasSuffix(got, "sh lschm2,sh aofs2,sh cschm1,sh cschm2") {
+		t.Fatalf("with the custom schemes in use: %s", got)
+	}
+}
+
+func TestSaveLoadDevices(t *testing.T) {
+	h := New(Creds{User: "donoff"})
+	h.onMessage("/donoff/", "/donoff/t14/out/sensors/pzem_power", "680.70")
+	h.onMessage("/donoff/", "/donoff/h2/out/info", "lschm2=1")
+	f := t.TempDir() + "/devices.json"
+	if err := h.SaveDevices(f); err != nil {
+		t.Fatal(err)
+	}
+	g := New(Creds{User: "donoff"})
+	if err := g.LoadDevices(f); err != nil {
+		t.Fatal(err)
+	}
+	v := g.snapshot()
+	if len(v.Devices) != 2 || v.Devices[1].Topics["sensors/pzem_power"].V != "680.70" || v.Devices[0].Params["lschm2"].V != "lschm2=1" || v.Devices[1].LastSeen.IsZero() {
+		t.Fatalf("%+v", v.Devices)
+	}
+	g.onMessage("/donoff/", "/donoff/t14/out/sensors/pzem_power", "1") // a loaded device takes new messages
+	if g.snapshot().Devices[1].Topics["sensors/pzem_power"].V != "1" {
+		t.Fatal("no update after load")
+	}
+	if err := New(Creds{}).LoadDevices(t.TempDir() + "/none.json"); err != nil {
+		t.Fatal("a missing file is no devices:", err)
 	}
 }

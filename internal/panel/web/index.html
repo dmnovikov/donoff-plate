@@ -24,7 +24,9 @@ header input { margin-left: auto; width: 200px; }
 main { max-width: 1400px; margin: 0 auto; padding: 16px; }
 .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(330px, 1fr)); gap: 14px; align-items: start; }
 .card { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px; min-width: 0; }
-.card.stale { opacity: .6; }
+.card.stale { background: var(--soft); filter: grayscale(1); opacity: .75; }
+.lost { margin: 2px 0 6px; font-size: 13px; color: var(--muted); }
+.lost b { color: var(--text); }
 .top { display: flex; align-items: center; gap: 8px; }
 .top h2 { margin: 0; font-size: 16px; flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .seen { color: var(--muted); font-size: 12px; }
@@ -73,7 +75,22 @@ summary { cursor: pointer; color: var(--accent); font-size: 13px; user-select: n
 .ctl .rctl { display: flex; gap: 6px; flex-wrap: wrap; }
 .other { font-size: 12px; }
 .mdot { display: inline-block; width: 11px; height: 11px; border-radius: 50%; background: var(--muted); opacity: .55; flex: none; align-self: center; }
-.mdot.heat { background: #ea580c; opacity: 1; } .mdot.cool { background: #2563eb; opacity: 1; } .mdot.none { visibility: hidden; }
+.mdot.heat { background: #ea580c; opacity: 1; } .mdot.cool { background: #2563eb; opacity: 1; } .mdot.sched { background: #7c3aed; opacity: 1; } .mdot.none { visibility: hidden; }
+.hbar { display: grid; grid-template-columns: repeat(24, 1fr); gap: 1px; margin: 2px 0 4px 19px; }
+.hbar i { height: 8px; background: var(--soft); border-radius: 1px; }
+.hbar i.on { background: #7c3aed; }
+.hbar i.now { outline: 2px solid var(--text); outline-offset: 0; }
+.hbar.big { margin: 4px 0; gap: 2px; }
+.hbar.big i { height: 22px; font-style: normal; font-size: 10px; color: var(--muted); display: grid; place-items: center; cursor: default; user-select: none; }
+.hbar.big i.on { color: #fff; }
+.hbar.edit i { cursor: pointer; }
+.hbar.edit i.chg { box-shadow: inset 0 0 0 2px #eab308; }
+.hlab { display: flex; justify-content: space-between; font-size: 10px; color: var(--muted); margin-left: 19px; }
+.relay .cfg { margin-left: auto; font-variant-numeric: tabular-nums; }
+.sync { font-size: 12px; } .sync.ok { color: var(--ok); } .sync.bad { color: var(--bad); }
+.sch { display: grid; gap: 4px; }
+.sch select { font: inherit; font-size: 13px; padding: 3px 6px; border-radius: 6px; border: 1px solid var(--line); background: var(--soft); color: var(--text); max-width: 100%; }
+.sch .q { color: var(--muted); font-size: 12px; }
 .hbtn { margin-top: 8px; display: flex; align-items: center; gap: 8px; }
 .hbtn[hidden] { display: none; }
 .hbtn .sp { flex: 1; min-width: 0; display: block; color: inherit; text-decoration: none; }
@@ -147,14 +164,56 @@ function parseLevels(text) {
 }
 
 // the relay mode from the answers "hotter=N" / "cooler=N" (donoff-lib clears one when the other is set)
-function relayMode(info) {
-  const last = re => [...info].reverse().find(m => !m.out && re.test(m.text));
-  const h = last(/^hotter=\d+$/), c = last(/^cooler=\d+$/);
-  const hv = h && +h.text.split('=')[1], cv = c && +c.text.split('=')[1];
-  if (h && hv > 0 && (!c || cv === 0 || h.at > c.at)) return { k: 'heat', t: 'термостат: нагрев', at: h.at };
-  if (c && cv > 0) return { k: 'cool', t: 'термостат: охлаждение', at: c.at };
-  if (h && c) return { k: 'manual', t: 'ручное (термостат выключен)', at: h.at > c.at ? h.at : c.at };
+function relayMode(p) {
+  const h = p.hotter, c = p.cooler;
+  const hv = h && +h.v.split('=')[1], cv = c && +c.v.split('=')[1];
+  if (h && hv > 0 && (!c || cv === 0 || h.at > c.at)) return { k: 'heat', t: 'термостат: нагрев' };
+  if (c && cv > 0) return { k: 'cool', t: 'термостат: охлаждение' };
+  if (h && c) return { k: 'manual', t: 'термостат не задан' };
   return null;
+}
+
+// "sh time": "I:S=1,T=17:5:2026" -> synced, the hour and the minute of the device
+function devTime(p) {
+  const m = p.time && p.time.v.match(/^I:S=(\d+),T=(\d+):(\d+)/);
+  return m ? { synced: m[1] === '1', h: +m[2], m: +m[3], at: p.time.at } : null;
+}
+
+// the schedules of donoff-lib (lamp_modes): 24 hours, the first char is 00:00-00:59
+const PRESETS = ['000000000000000000000000', '111111111111111111111111', '000000000000000000001111', '111111000000000000111111',
+  '000000011111111111111110', '000001111111111111111110', '000000111100000000111110', '000011111000000000111110',
+  '010101010101010101010101', '101010101010101010101010', '111111111111000000001111', '001001001001001001001001',
+  '000100010001000100010001', '000010000100001000010001', '000000010000000100000001', '000000000010000000000001',
+  '000000000000000000000010', '111111111110000000000011', '001111111111111000000000', '000000111100000000111111'];
+const aofsNum = (p, n) => { const v = p['aofs' + n]; return v ? +v.v.split('=')[1] : null; };
+const schNum = (p, n) => { const v = p['lschm' + n]; return v ? +v.v.split('=')[1] : null; };
+const customBits = (p, n) => { const v = p['cschm' + n]; return v ? v.v.replace(/ /g, '') : null; };
+function schBits(p, num) {
+  if (num >= 1 && num <= PRESETS.length) return PRESETS[num - 1];
+  if (num === 99) return customBits(p, 1);
+  if (num === 100) return customBits(p, 2);
+  return null;
+}
+function hoursText(bits) {
+  if (!bits) return '';
+  if (!bits.includes('1')) return 'всегда выкл';
+  if (!bits.includes('0')) return 'всегда вкл';
+  const out = []; let a = -1;
+  for (let h = 0; h <= 24; h++) {
+    if (h < 24 && bits[h] === '1') { if (a < 0) a = h; }
+    else if (a >= 0) { out.push(a === h - 1 ? `${a}` : `${a}–${h - 1}`); a = -1; }
+  }
+  return out.length > 6 ? `${bits.split('').filter(x => x === '1').length} ч в сутки` : out.join(', ');
+}
+function schName(num) {
+  if (num === 0) return 'выключено';
+  if (num === 99) return 'своя схема 1 (cschm1)';
+  if (num === 100) return 'своя схема 2 (cschm2)';
+  return `пресет ${num}: ${hoursText(PRESETS[num - 1])}`;
+}
+function hbar(bits, now, big) {
+  return `<div class="hbar${big ? ' big' : ''}">` + [...Array(24)].map((_, h) =>
+    `<i class="${bits && bits[h] === '1' ? 'on' : ''}${h === now ? ' now' : ''}" data-h="${h}" title="${h}:00–${h}:59">${big ? h : ''}</i>`).join('') + '</div>';
 }
 
 // the small chart of temp_out for the last 24 h on the card, like the tiles of an exchange
@@ -186,6 +245,91 @@ async function spark(id, el) {
   } catch (e) { sparks.set(id, { at: Date.now() }); }
 }
 
+// the schedule controls in "Управление": a preset per relay, and the editor of the custom schemes
+function schControls(id, el, relays, P, nowH) {
+  const box = el.querySelector('.schctl'), n = Math.min(relays.length, 2);
+  if (box.dataset.n !== String(n)) {
+    box.dataset.n = n;
+    const opts = [0, ...PRESETS.map((_, i) => i + 1), 99, 100].map(v => `<option value="${v}">${v === 0 ? '0 — выключено' : v >= 99 ? `${v} — ${schName(v)}` : `${v} — ${hoursText(PRESETS[v - 1])}`}</option>`).join('');
+    box.innerHTML = [...Array(n)].map((_, i) => `
+      <div class="row sch" data-n="${i + 1}"><label>Расписание ${esc(relays[i].replace(/^relays\//, ''))}</label>
+        <span class="q cur"></span>
+        <span style="display:flex;gap:6px;flex-wrap:wrap"><select>${opts}</select><button class="btn primary" data-a="sch">Задать</button></span>
+        <div class="pv"></div>
+        <span style="display:flex;gap:6px;flex-wrap:wrap;align-items:center"><span class="q">aofs (полив), с:</span><input type="number" class="ao" min="0" max="1200" step="1" style="width:80px"><button class="btn primary" data-a="aofs">Задать</button><span class="q aocur"></span></span>
+        </div>`).join('') + (n ? `
+      <details class="cust"><summary>Свои схемы (99 и 100)</summary>
+        ${[1, 2].map(k => `<div class="sch" data-c="${k}"><span class="q">cschm${k}: <span class="cs"></span></span>
+          <div class="ed"></div><span style="display:flex;gap:6px;flex-wrap:wrap"><button class="btn" data-a="cload">загрузить с устройства</button><button class="btn primary" data-a="csave">сохранить часы</button><button class="btn" data-a="creset">отменить правки</button></span></div>`).join('')}
+        <div class="q">Клик по часу меняет его; «сохранить» отправит только изменённые часы командами cschmN=час:0|1.</div>
+      </details>` : '');
+    box.querySelectorAll('select').forEach(sel => sel.addEventListener('change', () => { sel.dataset.dirty = '1'; schControls(id, el, relays, cardParams.get(id) || {}, nowH); }));
+    box.addEventListener('click', async e => {
+      const P = cardParams.get(id) || {};
+      const cell = e.target.closest('.ed i');
+      if (cell) {
+        const k = cell.closest('[data-c]').dataset.c, ed = edits.get(id + k) || customBits(P, k);
+        if (!ed) return;
+        const h = +cell.dataset.h, nb = ed.slice(0, h) + (ed[h] === '1' ? '0' : '1') + ed.slice(h + 1);
+        edits.set(id + k, nb); schControls(id, el, relays, P, nowH); return;
+      }
+      const b = e.target.closest('button'); if (!b) return;
+      if (b.dataset.a === 'sch') {
+        const row = b.closest('[data-n]'), k = row.dataset.n, sel = row.querySelector('select'), v = +sel.value;
+        const warn = k === '1' && v > 0 ? '\nТермостат (hotter/cooler) и aofh на этом реле устройство выключит.' : v === 0 ? '\nРеле выключится.' : '';
+        const par = k === '1' ? 'lschm' : 'lschm2'; // the old firmware knows "lschm", not "lschm1"
+        if (await send(id, `${par}=${v}`, el, `расписание реле ${k}: ${schName(v)}?${warn}`)) {
+          sel.dataset.dirty = ''; await sleep(1200); await send(id, `sh ${par}`, el);
+          if (v >= 99) { await sleep(1200); send(id, `sh cschm${v - 98}`, el); }
+        }
+        return;
+      }
+      if (b.dataset.a === 'aofs') {
+        const row = b.closest('[data-n]'), k = row.dataset.n, inp = row.querySelector('.ao'), v = Number(inp.value);
+        if (inp.value === '' || !Number.isInteger(v) || v < 0 || v > 1200) { el.querySelector('.err').textContent = 'aofs: целое число секунд 0…1200'; return; }
+        const par = k === '1' ? 'aofs' : 'aofs2';
+        const what = v === 0 ? 'выключить (реле по расписанию держится весь час)' : `${v} с в начале каждого часа расписания` + (k === '1' ? ';\nручное включение r1 без термостата тоже выключится через ' + v + ' с' : ';\nлюбое включение r2 выключится через ' + v + ' с');
+        if (await send(id, `${par}=${v}`, el, `реле ${k}, aofs: ${what}?`)) { inp.dataset.dirty = ''; await sleep(1200); send(id, `sh ${par}`, el); }
+        return;
+      }
+      const c = b.closest('[data-c]'); if (!c) return;
+      const k = c.dataset.c;
+      if (b.dataset.a === 'cload') return send(id, `sh cschm${k}`, el);
+      if (b.dataset.a === 'creset') { edits.delete(id + k); schControls(id, el, relays, P, nowH); return; }
+      if (b.dataset.a === 'csave') {
+        const was = customBits(P, k), ed = edits.get(id + k);
+        if (!was || !ed) return;
+        const ch = [...Array(24)].map((_, h) => h).filter(h => was[h] !== ed[h]);
+        if (!ch.length) return;
+        if (!confirm(`${id}: изменить свою схему ${k} (cschm${k})?\n\n` + ch.map(h => `${h}:00 — ${ed[h] === '1' ? 'вкл' : 'выкл'}`).join('\n'))) return;
+        for (const h of ch) { if (!await send(id, `cschm${k}=${h}:${ed[h]}`, el)) return; await sleep(1200); }
+        edits.delete(id + k); send(id, `sh cschm${k}`, el);
+      }
+    });
+  }
+  cardParams.set(id, P);
+  box.querySelectorAll('[data-n]').forEach(row => {
+    const k = +row.dataset.n, cur = schNum(P, k), sel = row.querySelector('select');
+    if (!sel.dataset.dirty && document.activeElement !== sel && cur !== null) sel.value = String(cur);
+    row.querySelector('.cur').textContent = cur === null ? 'сейчас: неизвестно (опрос раз в минуту)' : `сейчас: ${schName(cur)}`;
+    const ao = aofsNum(P, k), inp = row.querySelector('.ao');
+    if (!inp.dataset.bound) { inp.dataset.bound = '1'; inp.addEventListener('input', () => { inp.dataset.dirty = '1'; }); }
+    if (!inp.dataset.dirty && document.activeElement !== inp && ao !== null) inp.value = ao;
+    row.querySelector('.aocur').textContent = ao === null ? 'сейчас: неизвестно' : `сейчас: ${ao}${ao ? ' с' : ' (весь час)'}`;
+    const v = +sel.value, bits = schBits(P, v);
+    row.querySelector('.pv').innerHTML = v === 0 ? '' : bits ? hbar(bits, nowH, true) : '<span class="q">часы своей схемы ещё не загружены</span>';
+  });
+  box.querySelectorAll('[data-c]').forEach(c => {
+    const k = c.dataset.c, was = customBits(P, k), ed = edits.get(id + k) || was;
+    c.querySelector('.cs').textContent = was ? hoursText(was) + (edits.has(id + k) ? ' → ' + hoursText(ed) + ' (не сохранено)' : '') : 'не загружена';
+    const html = ed ? hbar(ed, nowH, true).replace('class="hbar big"', 'class="hbar big edit"') : '';
+    const e = c.querySelector('.ed');
+    const marked = was && ed ? html.replace(/data-h="(\d+)"/g, (m0, h) => was[h] !== ed[h] ? `${m0} data-chg` : m0) : html;
+    if (e.dataset.html !== marked) { e.innerHTML = marked; e.dataset.html = marked; e.querySelectorAll('[data-chg]').forEach(x => x.classList.add('chg')); }
+  });
+}
+const edits = new Map(), cardParams = new Map();
+
 const cards = new Map(), sections = new Map();
 let groups = {}, hasHistory = false;
 function makeCard(id) {
@@ -201,6 +345,7 @@ function makeCard(id) {
         <div class="row"><label>Реле</label><span class="rctl"></span></div>
         <div class="row"><label>Уставка, °C</label><input type="number" class="sp" step="0.5" min="-40" max="100"><button class="btn primary" data-a="sp">Задать</button></div>
         <div class="row"><label>Гистерезис, °C</label><input type="number" class="hy" step="0.1" min="0" max="20"><button class="btn primary" data-a="hy">Задать</button></div>
+        <div class="schctl"></div>
         <div class="row"><label>Режим</label><button class="btn" data-a="cool">❄ Охлаждение</button><button class="btn" data-a="heat">🔥 Нагрев</button><button class="btn" data-a="autooff">Выкл авто</button></div>
         <div class="row"><label>Запросить</label><button class="btn" data-q="sh tlevels">уставки</button><button class="btn" data-a="askmode">режим</button><button class="btn" data-q="sh time">время</button><button class="btn" data-q="sh ip">ip</button></div>
         <div class="row"><input type="text" class="raw" placeholder="своя команда, напр. sh r1"><button class="btn" data-a="raw">Отправить</button></div>
@@ -245,11 +390,17 @@ function render(d) {
   const sensors = Object.keys(t).filter(k => !isTime(k) && !relayKey(k) && !k.endsWith('_json') && !t[k].v.startsWith('{') && (!pt || k !== pt[0])).sort();
   const rows = [];
   if (t.time_up) rows.push(['Время работы', `<span class="num">${esc(t.time_up.v)}</span>`]);
-  if (clock) rows.push(['Часы устройства', `<span class="num">${esc(clock.ts)}</span>`]);
+  const dt = devTime(d.params || {});
+  const syncHtml = dt ? (dt.synced ? ' <span class="sync ok" title="sh time: S=1">✓ синхр.</span>' : ' <span class="sync bad" title="sh time: S=0 — расписания, кроме 1 и 2, не работают">⚠ время не синхронизировано</span>') : '';
+  if (clock) rows.push(['Часы устройства', `<span class="num">${esc(clock.ts)}</span>${syncHtml}`]);
+  else if (dt) rows.push(['Часы устройства', `<span class="num">${dt.h}:${String(dt.m).padStart(2, '0')}</span>${syncHtml}`]);
   for (const k of sensors) rows.push([esc(sensorName(k)), `<span class="num">${esc(t[k].v)}</span>`]);
   // the thermostat relay (the first one) gets a dot: orange = heating, blue = cooling, gray = no thermostat
-  const m = relays.length ? relayMode(d.info) : null;
+  // a relay on a schedule (lschm1 for the first, lschm2 for the second) gets a violet dot and the bar of 24 hours
+  const P = d.params || {};
+  const m = relays.length ? relayMode(P) : null;
   const mdot = m ? { heat: ['heat', 'термостат: нагрев'], cool: ['cool', 'термостат: охлаждение'], manual: ['', 'термостат не задан'] }[m.k] : ['', 'режим ещё неизвестен'];
+  const nowH = dt && dt.synced ? (dt.h + Math.floor((dt.m + age(dt.at) / 60) / 60)) % 24 : new Date().getHours();
   const relayHtml = relays.map((k, i) => {
     const on = t[k].v === '1', n = (k.match(/^relays\/r(\d+)$/) || [])[1];
     let tm = '';
@@ -257,10 +408,16 @@ function render(d) {
       if (on && t.time_comm && t.time_comm.v !== 'OFF') tm = `вкл ${esc(t.time_comm.v)}`;
       if (!on && t.time_down && t.time_down.v !== 'OFF') tm = `выкл ${esc(t.time_down.v)}`;
     }
-    return `<div class="relay">${i === 0 ? `<span class="mdot ${mdot[0]}" title="${mdot[1]}"></span>` : '<span class="mdot none"></span>'}<span class="name">${esc(k.replace(/^relays\//, ''))}</span><span class="pill ${on ? 'on' : 'off'}">${on ? 'ВКЛ' : 'ВЫКЛ'}</span><span class="t">${tm}</span></div>`;
+    const sn = i < 2 ? schNum(P, i + 1) : null, sched = sn > 0;
+    const dd = sched ? ['sched', 'по часам: ' + schName(sn)] : i === 0 ? mdot : ['none', ''];
+    const bar = sched ? hbar(schBits(P, sn), nowH) : '';
+    const ao = i < 2 ? aofsNum(P, i + 1) : null, q = x => x === null ? '?' : x;
+    const cfg = i < 2 ? `<span class="t cfg" title="lschm — расписание по часам, aofs — сколько секунд реле включено в начале часа (полив), 0 — весь час">lschm ${q(sn)} · aofs ${q(ao)}${ao > 0 ? ' с' : ''}</span>` : '';
+    return `<div class="relay"><span class="mdot ${dd[0]}" title="${esc(dd[1])}"></span><span class="name">${esc(k.replace(/^relays\//, ''))}</span><span class="pill ${on ? 'on' : 'off'}">${on ? 'ВКЛ' : 'ВЫКЛ'}</span><span class="t">${tm}${sched ? ` · по часам${ao > 0 ? `, полив ${ao} с в начале часа` : ''}` : ''}</span>${cfg}</div>${bar}`;
   }).join('');
   el.querySelector('.live').innerHTML = `
     <div class="top"><span class="dot ${dot}"></span><h2>${esc(d.id)}</h2><span class="seen">${ago(d.last_seen)} назад</span></div>
+    ${a > 300 ? `<div class="lost"><b>Нет связи</b> · последний раз ${new Date(d.last_seen).toLocaleString('ru-RU', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })} (${ago(d.last_seen)} назад)</div>` : ''}
     ${pt ? `<div class="big">${esc(pt[1].v)} <small>°C</small><span class="lbl">${esc(sensorName(pt[0]))}</span></div>` : ''}
     ${rows.length ? `<div class="kv">${rows.map(([k, v]) => `<span>${k}</span><span>${v}</span>`).join('')}</div>` : ''}
     ${relayHtml ? `<div class="relays">${relayHtml}</div>` : ''}
@@ -269,14 +426,15 @@ function render(d) {
     .map(n => `<button class="btn on" data-r="${n}" data-v="1">r${n} вкл</button><button class="btn off" data-r="${n}" data-v="0">r${n} выкл</button>`).join('');
   const rbox = el.querySelector('.rctl');
   if (rbox.dataset.html !== rctl) { rbox.innerHTML = rctl || '<span class="q">реле нет</span>'; rbox.dataset.html = rctl; }
+  schControls(d.id, el, relays, P, nowH);
   el.querySelector('.hbtn').hidden = !(hasHistory && (relays.length || sensors.length || pt));
   if (hasHistory) spark(d.id, el);
   const g = el.querySelector('.grp');
   if (!g.dataset.dirty && document.activeElement !== g) g.value = groups[d.id] || '';
   // the last answer with levels: "C=2600,D=2600,N=2600 dT=100"
-  const lv = [...d.info].reverse().find(m => !m.out && /^C=-?\d+.*dT=-?\d+/.test(m.text));
+  const lv = P.tls;
   el.querySelector('.levels').textContent = lv
-    ? (() => { const l = parseLevels(lv.text); return `Сейчас: уставка ${l.c} °C, гистерезис ${l.dt} °C (ответ ${ago(lv.at)} назад)`; })()
+    ? (() => { const l = parseLevels(lv.v); return `Сейчас: уставка ${l.c} °C, гистерезис ${l.dt} °C (ответ ${ago(lv.at)} назад)`; })()
     : 'Текущие уставки неизвестны — панель спрашивает их раз в минуту, или «Запросить: уставки».';
   const msgs = [...d.info.filter(m => !m.auto).map(m => ({ ...m, k: 'i' })), ...d.log.map(m => ({ ...m, k: 'l' }))].sort((x, y) => x.at < y.at ? -1 : 1).slice(-12);
   const box = el.querySelector('.msgs');

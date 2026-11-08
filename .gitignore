@@ -6,3 +6,4 @@ panel.log
 panel-tunnel.sh
 donoff-panel-groups.json
 *.tmp
+donoff-panel-devices.json
