@@ -65,6 +65,10 @@ summary { cursor: pointer; color: var(--accent); font-size: 13px; user-select: n
 .msgs .tm { color: var(--muted); }
 .msgs .out { color: var(--accent); }
 .msgs:empty { display: none; }
+.con { display: flex; gap: 6px; align-items: center; }
+.con .raw { flex: 1; min-width: 0; font: 13px ui-monospace, SFMono-Regular, Menlo, monospace; }
+.last { font: 12px/1.4 ui-monospace, SFMono-Regular, Menlo, monospace; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-height: 1.4em; }
+.last b { color: var(--text); font-weight: 500; }
 .err { color: var(--bad); font-size: 12px; min-height: 1em; }
 .empty { color: var(--muted); padding: 40px; text-align: center; }
 .group { margin-bottom: 22px; }
@@ -341,6 +345,8 @@ function makeCard(id) {
     <details>
       <summary>Управление</summary>
       <div class="ctl">
+        <div class="con"><input type="text" class="raw" placeholder="команда, Enter — отправить (↑ — прошлые)" autocomplete="off" spellcheck="false" autocapitalize="off"><button class="btn" data-a="raw">⏎</button></div>
+        <div class="last" title="последний ответ в /out/info"></div>
         <div class="levels"></div>
         <div class="row"><label>Реле</label><span class="rctl"></span></div>
         <div class="row"><label>Уставка, °C</label><input type="number" class="sp" step="0.5" min="-40" max="100"><button class="btn primary" data-a="sp">Задать</button></div>
@@ -348,7 +354,6 @@ function makeCard(id) {
         <div class="schctl"></div>
         <div class="row"><label>Режим</label><button class="btn" data-a="cool">❄ Охлаждение</button><button class="btn" data-a="heat">🔥 Нагрев</button><button class="btn" data-a="autooff">Выкл авто</button></div>
         <div class="row"><label>Запросить</label><button class="btn" data-q="sh tlevels">уставки</button><button class="btn" data-a="askmode">режим</button><button class="btn" data-q="sh time">время</button><button class="btn" data-q="sh ip">ip</button></div>
-        <div class="row"><input type="text" class="raw" placeholder="своя команда, напр. sh r1"><button class="btn" data-a="raw">Отправить</button></div>
         <div class="row"><label>Группа</label><input type="text" class="grp" list="grouplist" placeholder="без группы"><button class="btn" data-a="grp">Сохранить</button></div>
       </div>
     </details>
@@ -370,7 +375,21 @@ function makeCard(id) {
       catch (e) { el.querySelector('.err').textContent = e.message; }
       return;
     }
-    if (a === 'raw') { const c = el.querySelector('.raw').value.trim(); if (c && await send(id, c, el, 'отправить команду?')) el.querySelector('.raw').value = ''; }
+    if (a === 'raw') return rawSend();
+  });
+  // the command line: "sh ..." goes at once, a setting asks first; ↑/↓ walk the commands sent from this card
+  const raw = el.querySelector('.raw'), hist = []; let hi = 0;
+  async function rawSend() {
+    const c = raw.value.trim(); if (!c) return;
+    if (await send(id, c, el, /^sh\s/i.test(c) ? '' : 'отправить команду?')) {
+      if (hist[hist.length - 1] !== c) hist.push(c);
+      hi = hist.length; raw.value = '';
+    }
+  }
+  raw.addEventListener('keydown', e => {
+    if (e.key === 'Enter') { e.preventDefault(); rawSend(); }
+    else if (e.key === 'ArrowUp' && hi > 0) { e.preventDefault(); raw.value = hist[--hi]; }
+    else if (e.key === 'ArrowDown' && hi < hist.length) { e.preventDefault(); hi++; raw.value = hist[hi] || ''; }
   });
   el.querySelectorAll('.hlink').forEach(a => a.href = '/history?dev=' + encodeURIComponent(id));
   el.querySelector('.grp').addEventListener('input', e => { e.target.dataset.dirty = '1'; });
@@ -437,6 +456,10 @@ function render(d) {
     ? (() => { const l = parseLevels(lv.v); return `Сейчас: уставка ${l.c} °C, гистерезис ${l.dt} °C (ответ ${ago(lv.at)} назад)`; })()
     : 'Текущие уставки неизвестны — панель спрашивает их раз в минуту, или «Запросить: уставки».';
   const msgs = [...d.info.filter(m => !m.auto).map(m => ({ ...m, k: 'i' })), ...d.log.map(m => ({ ...m, k: 'l' }))].sort((x, y) => x.at < y.at ? -1 : 1).slice(-12);
+  const lastIn = d.info.filter(m => !m.out).slice(-1)[0];
+  const lastHtml = lastIn ? `<span>${hm(lastIn.at)}</span> ← <b>${esc(lastIn.text)}</b>` : 'ответов ещё нет';
+  const le = el.querySelector('.last');
+  if (le.dataset.html !== lastHtml) { le.innerHTML = lastHtml; le.dataset.html = lastHtml; le.title = lastIn ? lastIn.text : ''; }
   const box = el.querySelector('.msgs');
   const atBottom = box.scrollTop + box.clientHeight >= box.scrollHeight - 4;
   box.innerHTML = msgs.map(m => `<div><span class="tm">${hm(m.at)}</span> ${m.out ? `<span class="out">→ ${esc(m.text)}</span>` : (m.k === 'l' ? 'log: ' : '') + esc(m.text)}</div>`).join('');

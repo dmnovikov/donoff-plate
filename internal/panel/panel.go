@@ -372,7 +372,7 @@ func (h *Hub) pollCmds(id string) []string {
 }
 
 const (
-	pollGap   = 1500 * time.Millisecond
+	pollGap   = 3 * time.Second
 	pollFresh = 5 * time.Minute // a device silent for longer is not asked
 )
 
