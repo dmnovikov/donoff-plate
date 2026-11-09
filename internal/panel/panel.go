@@ -99,6 +99,7 @@ type Device struct {
 	lastCmd   time.Time
 	autoUntil time.Time       // answers before it belong to the periodic poll
 	lastAsk   string          // the last "sh ..." sent: "sh cschm1" answers only with the bits
+	pollNext  int             // the poll sends pollCmds()[pollNext % len] next
 	unknown   map[string]bool // poll commands the device answered with "E:..." (napi-termostat has no lschm/aofs): not asked again
 }
 
@@ -372,16 +373,17 @@ func (h *Hub) pollCmds(id string) []string {
 }
 
 const (
-	pollGap   = 3 * time.Second
 	pollFresh = 5 * time.Minute // a device silent for longer is not asked
 )
 
-// Poll asks the devices every period until stop is closed; period 0 = never.
+// Poll sends every fresh device one poll command each period, going round its list
+// (a device with a relay: 7–9 commands, so the full round takes 7–9 periods); period 0 = never.
+// The values change slowly, and the devices should not be loaded: one command per period is enough.
 func (h *Hub) Poll(period time.Duration, stop <-chan struct{}) {
 	if period <= 0 {
 		return
 	}
-	log.Printf("poll: sh time (every device), sh hotter/cooler/tls/lschm/aofs/lschm2/aofs2 [cschm1/2] (devices with a relay) every %v", period)
+	log.Printf("poll: one command per device every %v, in turn: sh time; sh hotter/cooler/tls/lschm/aofs/lschm2/aofs2 [cschm1/2] (devices with a relay)", period)
 	tick := time.NewTicker(period)
 	defer tick.Stop()
 	for {
@@ -391,19 +393,28 @@ func (h *Hub) Poll(period time.Duration, stop <-chan struct{}) {
 		case <-tick.C:
 		}
 		for _, id := range h.pollTargets() {
-			go func(id string) {
-				for i, c := range h.pollCmds(id) {
-					if i > 0 {
-						time.Sleep(pollGap)
-					}
-					if err := h.send(id, c, true); err != nil && strings.Contains(err.Error(), "wait") {
-						time.Sleep(pollGap) // a command from the page just went: try once more
-						h.send(id, c, true)
-					}
-				}
-			}(id)
+			if c := h.nextPoll(id); c != "" {
+				go h.send(id, c, true) // "wait" (a command from the page just went): this one is skipped, the next tick goes on
+			}
 		}
 	}
+}
+
+// nextPoll is the next poll command for the device, in turn
+func (h *Hub) nextPoll(id string) string {
+	cmds := h.pollCmds(id)
+	if len(cmds) == 0 {
+		return ""
+	}
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	d := h.dev[id]
+	if d == nil {
+		return ""
+	}
+	c := cmds[d.pollNext%len(cmds)]
+	d.pollNext++
+	return c
 }
 
 func (h *Hub) pollTargets() []string {
