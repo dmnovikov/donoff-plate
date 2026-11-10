@@ -2,6 +2,7 @@ package panel
 
 import (
 	"encoding/json"
+	"os"
 	"strings"
 	"testing"
 	"time"
@@ -168,5 +169,42 @@ func TestSaveLoadDevices(t *testing.T) {
 	}
 	if err := New(Creds{}).LoadDevices(t.TempDir() + "/none.json"); err != nil {
 		t.Fatal("a missing file is no devices:", err)
+	}
+}
+
+func TestCommandJournal(t *testing.T) {
+	h := New(Creds{Host: "h", Port: 1883, User: "donoff"})
+	path := t.TempDir() + "/cmds.jsonl"
+	h.SetCmdLog(path)
+	p := "/donoff/"
+	h.onMessage(p, "/donoff/d1/out/time_up", "1")
+	now := time.Now()
+	h.mu.Lock()
+	d := h.device("d1")
+	d.sent = []sentCmd{{"sh hotter", now}, {"r11", now}, {"r10", now.Add(-time.Minute)}} // the poll, a button, a lost one
+	h.mu.Unlock()
+	h.onCommand(p, "/donoff/d1/in/params", "sh hotter") // our echoes: nothing new
+	h.onCommand(p, "/donoff/d1/in/params", "r11")
+	h.onCommand(p, "/donoff/d1/in/params", "r11")      // the same text again: this one is not ours
+	h.onCommand(p, "/donoff/d1/in/params", "r10")      // our r10 is too old to be its echo
+	h.onCommand(p, "/donoff/d1/in/params", "sh lschm") // somebody else asks
+	h.onCommand(p, "/donoff/d1/in/b1", "0")            // straight to a relay topic
+	h.onCommand(p, "/donoff/a/b/in/params", "x")       // not a device
+	h.onCommand(p, "/other/d1/in/params", "x")         // other user
+	h.mu.Lock()
+	h.journal(h.device("d1"), "d1", "sh time", byPanel, now) // by hand from the page: file only
+	h.journal(h.device("d1"), "d1", "ctempl=2600", byPanel, now)
+	h.mu.Unlock()
+	var got []string
+	for _, m := range h.snapshot().Devices[0].Cmds {
+		got = append(got, m.By+":"+m.Text)
+	}
+	want := "other:r11 other:r10 other:sh lschm other:in/b1 0 panel:ctempl=2600"
+	if strings.Join(got, " ") != want {
+		t.Fatalf("card: %q", got)
+	}
+	b, err := os.ReadFile(path)
+	if err != nil || strings.Count(string(b), "\n") != 6 || !strings.Contains(string(b), `"cmd":"sh time","by":"panel"`) {
+		t.Fatalf("file: %v\n%s", err, b)
 	}
 }

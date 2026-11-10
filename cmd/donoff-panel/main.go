@@ -23,6 +23,7 @@ func main() {
 	listen := flag.String("listen", ":8090", "address of the page")
 	devices := flag.String("devices", "donoff-panel-devices.json", "file that keeps the last state of the devices over restarts (\"\" = none)")
 	groups := flag.String("groups", "donoff-panel-groups.json", "file that keeps the groups of the devices (set on the page)")
+	cmdLog := flag.String("cmd-log", "donoff-panel-cmds.jsonl", "file that keeps the commands sent to the devices, by the panel and by other clients, without the poll (\"\" = none)")
 	poll := flag.Duration("poll", 30*time.Second, "send every device one poll command (sh time, sh hotter, ...) this often, in turn (0 = never)")
 	influx := flag.String("influx", "influx.creds", "file with InfluxDB 2: lines url=, org=, bucket=, token= (\"\" = no history)")
 	tokenListen := flag.String("token-listen", "", "a second address of the page where everyone needs the token (for a tunnel, e.g. 127.0.0.1:8091)")
@@ -49,6 +50,7 @@ func main() {
 	}
 
 	h := panel.New(c)
+	h.SetCmdLog(*cmdLog)
 	stopKeep := make(chan struct{})
 	keepDone := make(chan struct{})
 	if *devices != "" {

@@ -69,6 +69,9 @@ summary { cursor: pointer; color: var(--accent); font-size: 13px; user-select: n
 .con .raw { flex: 1; min-width: 0; font: 13px ui-monospace, SFMono-Regular, Menlo, monospace; }
 .last { font: 12px/1.4 ui-monospace, SFMono-Regular, Menlo, monospace; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-height: 1.4em; }
 .last b { color: var(--text); font-weight: 500; }
+.jl { font: 12px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace; color: var(--muted); max-height: 180px; overflow-y: auto; overflow-wrap: anywhere; }
+.jl b { color: var(--text); font-weight: 500; }
+.jl .ext { color: var(--bad, #c0392b); }
 .err { color: var(--bad); font-size: 12px; min-height: 1em; }
 .empty { color: var(--muted); padding: 40px; text-align: center; }
 .group { margin-bottom: 22px; }
@@ -138,9 +141,16 @@ const relayKey = k => /^relays\/r\d+$/.test(k) || /^b\d+$/.test(k);
 const sensorName = k => k.replace(/^sensors\//, '');
 const isTemp = k => /^temp/.test(sensorName(k));
 function primaryTemp(t) {
-  for (const k of ['sensors/temp_in', 'temp_in', 'sensors/temp_out', 'temp_out']) if (t[k]) return [k, t[k]];
+  for (const k of ['sensors/temp_out', 'temp_out', 'sensors/temp_in', 'temp_in']) if (t[k]) return [k, t[k]];
   const k = Object.keys(t).find(k => isTemp(k) && !k.endsWith('_json'));
   return k ? [k, t[k]] : null;
+}
+// temp_in only watches the device itself: in brackets after the main temperature, -127 means there is none
+const isControlTemp = k => sensorName(k) === 'temp_in';
+function controlTemp(t, pt) {
+  const k = ['sensors/temp_in', 'temp_in'].find(k => t[k]);
+  if (!k || (pt && pt[0] === k) || Number(t[k].v) === -127) return null;
+  return t[k].v;
 }
 function deviceClock(t) {
   let best = null;
@@ -355,10 +365,13 @@ function makeCard(id) {
         <div class="row"><label>Режим</label><button class="btn" data-a="cool">❄ Охлаждение</button><button class="btn" data-a="heat">🔥 Нагрев</button><button class="btn" data-a="autooff">Выкл авто</button></div>
         <div class="row"><label>Запросить</label><button class="btn" data-q="sh tlevels">уставки</button><button class="btn" data-a="askmode">режим</button><button class="btn" data-q="sh time">время</button><button class="btn" data-q="sh ip">ip</button></div>
         <div class="row"><label>Группа</label><input type="text" class="grp" list="grouplist" placeholder="без группы"><button class="btn" data-a="grp">Сохранить</button></div>
+        <details class="jrn"><summary>Журнал команд</summary><div class="jl"></div></details>
       </div>
     </details>
     <div class="err"></div>
-    <div class="msgs"></div>`;
+    <details class="feed"><summary>Лог</summary><div class="msgs"></div></details>`;
+  const feed = el.querySelector('.feed');
+  feed.addEventListener('toggle', () => { if (feed.open) { const b = feed.querySelector('.msgs'); b.scrollTop = b.scrollHeight; } });
   el.querySelector('.ctl').addEventListener('click', async e => {
     const b = e.target.closest('button'); if (!b) return;
     if (b.dataset.q) return send(id, b.dataset.q, el);
@@ -398,15 +411,16 @@ function makeCard(id) {
 }
 
 function render(d) {
-  d.info = d.info || []; d.log = d.log || []; d.topics = d.topics || {};
+  d.info = d.info || []; d.log = d.log || []; d.cmds = d.cmds || []; d.topics = d.topics || {};
   const el = cards.get(d.id) || makeCard(d.id);
   const t = d.topics, a = age(d.last_seen);
   el.classList.toggle('stale', a > 300);
   const dot = a < 60 ? 'ok' : a < 300 ? 'warn' : '';
   const pt = primaryTemp(t);
+  const ctemp = controlTemp(t, pt);
   const clock = deviceClock(t);
   const relays = Object.keys(t).filter(relayKey).sort();
-  const sensors = Object.keys(t).filter(k => !isTime(k) && !relayKey(k) && !k.endsWith('_json') && !t[k].v.startsWith('{') && (!pt || k !== pt[0])).sort();
+  const sensors = Object.keys(t).filter(k => !isTime(k) && !relayKey(k) && !k.endsWith('_json') && !t[k].v.startsWith('{') && (!pt || (k !== pt[0] && !isControlTemp(k)))).sort();
   const rows = [];
   if (t.time_up) rows.push(['Время работы', `<span class="num">${esc(t.time_up.v)}</span>`]);
   const dt = devTime(d.params || {});
@@ -437,7 +451,7 @@ function render(d) {
   el.querySelector('.live').innerHTML = `
     <div class="top"><span class="dot ${dot}"></span><h2>${esc(d.id)}</h2><span class="seen">${ago(d.last_seen)} назад</span></div>
     ${a > 300 ? `<div class="lost"><b>Нет связи</b> · последний раз ${new Date(d.last_seen).toLocaleString('ru-RU', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })} (${ago(d.last_seen)} назад)</div>` : ''}
-    ${pt ? `<div class="big">${esc(pt[1].v)} <small>°C</small><span class="lbl">${esc(sensorName(pt[0]))}</span></div>` : ''}
+    ${pt ? `<div class="big">${esc(pt[1].v)} <small>°C${ctemp !== null ? ` (${esc(ctemp)})` : ''}</small><span class="lbl">${esc(sensorName(pt[0]))}</span></div>` : ''}
     ${rows.length ? `<div class="kv">${rows.map(([k, v]) => `<span>${k}</span><span>${v}</span>`).join('')}</div>` : ''}
     ${relayHtml ? `<div class="relays">${relayHtml}</div>` : ''}
 `;
@@ -460,6 +474,10 @@ function render(d) {
   const lastHtml = lastIn ? `<span>${hm(lastIn.at)}</span> ← <b>${esc(lastIn.text)}</b>` : 'ответов ещё нет';
   const le = el.querySelector('.last');
   if (le.dataset.html !== lastHtml) { le.innerHTML = lastHtml; le.dataset.html = lastHtml; le.title = lastIn ? lastIn.text : ''; }
+  const dm = t => new Date(t).toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit' });
+  const jHtml = d.cmds.length ? d.cmds.slice().reverse().map(m => `<div>${dm(m.at)} ${hm(m.at)} <b>${esc(m.text)}</b>${m.by === 'other' ? ' <span class="ext">не панель</span>' : ''}</div>`).join('') : 'команд пока не было';
+  const je = el.querySelector('.jl');
+  if (je.dataset.html !== jHtml) { je.innerHTML = jHtml; je.dataset.html = jHtml; }
   const box = el.querySelector('.msgs');
   const atBottom = box.scrollTop + box.clientHeight >= box.scrollHeight - 4;
   box.innerHTML = msgs.map(m => `<div><span class="tm">${hm(m.at)}</span> ${m.out ? `<span class="out">→ ${esc(m.text)}</span>` : (m.k === 'l' ? 'log: ' : '') + esc(m.text)}</div>`).join('');

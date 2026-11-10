@@ -40,8 +40,10 @@ var page []byte
 var historyPage []byte
 
 const (
-	keepMsgs = 30                      // answers and log lines kept per device
-	cmdGap   = 1100 * time.Millisecond // donoff-lib drops commands closer than 1 s
+	keepMsgs      = 30                      // answers and log lines kept per device
+	cmdGap        = 1100 * time.Millisecond // donoff-lib drops commands closer than 1 s
+	sentKeep      = 30 * time.Second        // the broker echoes our commands much sooner than this
+	maxJournalCmd = 200                     // characters of a command kept in the journal
 )
 
 // Creds is the broker: the file has the lines host, user, password and an optional port.
@@ -87,6 +89,7 @@ type Msg struct {
 	Text string    `json:"text"`
 	Out  bool      `json:"out,omitempty"`  // a command we sent
 	Auto bool      `json:"auto,omitempty"` // an answer to the periodic poll (the page hides it in the feed)
+	By   string    `json:"by,omitempty"`   // the command journal: byPanel or byOther
 }
 
 type Device struct {
@@ -96,12 +99,26 @@ type Device struct {
 	Params    map[string]Value `json:"params"` // the last known answers: hotter, cooler, tls, time, lschm1, lschm2, cschm1, cschm2
 	Info      []Msg            `json:"info"`   // /out/info answers and the commands sent, newest last
 	Log       []Msg            `json:"log"`    // /out/log
+	Cmds      []Msg            `json:"cmds"`   // the command journal: everything but the panel's own "sh ..."
 	lastCmd   time.Time
 	autoUntil time.Time       // answers before it belong to the periodic poll
 	lastAsk   string          // the last "sh ..." sent: "sh cschm1" answers only with the bits
 	pollNext  int             // the poll sends pollCmds()[pollNext % len] next
 	unknown   map[string]bool // poll commands the device answered with "E:..." (napi-termostat has no lschm/aofs): not asked again
+	sent      []sentCmd       // what the panel published and the broker has not echoed yet
 }
+
+// sentCmd lets onCommand tell the broker's echo of our own command from a command of another client.
+type sentCmd struct {
+	text string
+	at   time.Time
+}
+
+// who sent a command; MQTT does not say, so "other" is whatever the panel did not publish itself
+const (
+	byPanel = "panel"
+	byOther = "other"
+)
 
 type BrokerState struct {
 	Server    string    `json:"server"`
@@ -120,6 +137,7 @@ type Hub struct {
 	st         BrokerState
 	groups     map[string]string // dev_id -> group
 	groupsPath string
+	cmdsPath   string  // the command journal, one JSON object per line ("" = page only)
 	influx     *Influx // nil = no history
 }
 
@@ -205,6 +223,11 @@ func (h *Hub) Start() {
 			h.state(true, "")
 			log.Printf("mqtt: connected to %s as %s, listening %s+/out/#", h.st.Server, h.creds.User, prefix)
 			cl.Subscribe(prefix+"+/out/#", 0, func(_ paho.Client, m paho.Message) { h.onMessage(prefix, m.Topic(), string(m.Payload())) })
+			cl.Subscribe(prefix+"+/in/#", 0, func(_ paho.Client, m paho.Message) {
+				if !m.Retained() { // a retained message is an old one, repeated on every subscribe
+					h.onCommand(prefix, m.Topic(), string(m.Payload()))
+				}
+			})
 		}).
 		SetConnectionLostHandler(func(_ paho.Client, err error) { h.state(false, "connection lost: "+err.Error()) })
 	h.cli = paho.NewClient(o)
@@ -288,6 +311,83 @@ func (h *Hub) onMessage(prefix, topic, payload string) {
 		}
 	}
 }
+
+// onCommand: a message on /<user>/<dev>/in/... — our own echo, or a command of another client.
+func (h *Hub) onCommand(prefix, topic, payload string) {
+	rest, ok := strings.CutPrefix(topic, prefix)
+	if !ok {
+		return
+	}
+	id, sub, ok := strings.Cut(rest, "/in/")
+	if !ok || !devRe.MatchString(id) {
+		return
+	}
+	cmd := strings.TrimSpace(payload)
+	if sub != "params" {
+		cmd = "in/" + sub + " " + cmd
+	}
+	if r := []rune(cmd); len(r) > maxJournalCmd {
+		cmd = string(r[:maxJournalCmd])
+	}
+	now := time.Now()
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	d := h.device(id)
+	if sub == "params" && d.takeSent(cmd, now) {
+		return
+	}
+	h.journal(d, id, cmd, byOther, now)
+}
+
+// takeSent drops what is too old for an echo and reports whether cmd is one of ours (call with h.mu held).
+func (d *Device) takeSent(cmd string, now time.Time) bool {
+	found := false
+	kept := d.sent[:0]
+	for _, s := range d.sent {
+		switch {
+		case now.Sub(s.at) > sentKeep:
+		case !found && s.text == cmd:
+			found = true
+		default:
+			kept = append(kept, s)
+		}
+	}
+	d.sent = kept
+	return found
+}
+
+func isSh(cmd string) bool {
+	f := strings.Fields(cmd)
+	return len(f) > 0 && f[0] == "sh"
+}
+
+// journal records a command in the card and the file (call with h.mu held). The poll never gets here.
+func (h *Hub) journal(d *Device, dev, cmd, by string, at time.Time) {
+	if by != byPanel || !isSh(cmd) {
+		d.Cmds = push(d.Cmds, Msg{At: at, Text: cmd, By: by})
+	}
+	if h.cmdsPath == "" {
+		return
+	}
+	line, _ := json.Marshal(struct {
+		At  time.Time `json:"at"`
+		Dev string    `json:"dev"`
+		Cmd string    `json:"cmd"`
+		By  string    `json:"by"`
+	}{at, dev, cmd, by})
+	f, err := os.OpenFile(h.cmdsPath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o600)
+	if err != nil {
+		log.Printf("journal: %v", err)
+		return
+	}
+	defer f.Close()
+	if _, err := f.Write(append(line, '\n')); err != nil {
+		log.Printf("journal: %v", err)
+	}
+}
+
+// SetCmdLog makes the command journal go to a file too (call before Start).
+func (h *Hub) SetCmdLog(path string) { h.cmdsPath = path }
 
 var devRe = regexp.MustCompile(`^[A-Za-z0-9_.-]{1,32}$`)
 
@@ -448,6 +548,8 @@ func (h *Hub) send(dev, cmd string, auto bool) error {
 	}
 	d.lastCmd = time.Now()
 	d.lastAsk = cmd
+	d.takeSent("", d.lastCmd) // only the cleanup: forget what was never echoed
+	d.sent = append(d.sent, sentCmd{cmd, d.lastCmd})
 	if auto {
 		d.autoUntil = d.lastCmd.Add(3 * time.Second)
 	} else {
@@ -461,6 +563,9 @@ func (h *Hub) send(dev, cmd string, auto bool) error {
 	}
 	if !auto {
 		log.Printf("cmd %s <- %q", topic, cmd)
+		h.mu.Lock()
+		h.journal(h.device(dev), dev, cmd, byPanel, time.Now())
+		h.mu.Unlock()
 	}
 	return nil
 }
@@ -495,6 +600,7 @@ func (h *Hub) snapshot() stateView {
 		}
 		c.Info = append([]Msg{}, d.Info...) // [] and not null in the JSON
 		c.Log = append([]Msg{}, d.Log...)
+		c.Cmds = append([]Msg{}, d.Cmds...)
 		v.Devices = append(v.Devices, c)
 	}
 	sort.Slice(v.Devices, func(i, j int) bool { return v.Devices[i].ID < v.Devices[j].ID })
