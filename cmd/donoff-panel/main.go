@@ -23,6 +23,7 @@ func main() {
 	listen := flag.String("listen", ":8090", "address of the page")
 	devices := flag.String("devices", "donoff-panel-devices.json", "file that keeps the last state of the devices over restarts (\"\" = none)")
 	groups := flag.String("groups", "donoff-panel-groups.json", "file that keeps the groups of the devices (set on the page)")
+	comments := flag.String("comments", "donoff-panel-comments.json", "file that keeps the comments of the devices (set on the page)")
 	cmdLog := flag.String("cmd-log", "donoff-panel-cmds.jsonl", "file that keeps the commands sent to the devices, by the panel and by other clients, without the poll (\"\" = none)")
 	poll := flag.Duration("poll", 30*time.Second, "send every device one poll command (sh time, sh hotter, ...) this often, in turn (0 = never)")
 	influx := flag.String("influx", "influx.creds", "file with InfluxDB 2: lines url=, org=, bucket=, token= (\"\" = no history)")
@@ -62,6 +63,9 @@ func main() {
 		close(keepDone)
 	}
 	if err := h.LoadGroups(*groups); err != nil {
+		log.Fatal(err)
+	}
+	if err := h.LoadComments(*comments); err != nil {
 		log.Fatal(err)
 	}
 	stopInflux := make(chan struct{})

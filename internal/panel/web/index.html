@@ -17,7 +17,7 @@
 }
 * { box-sizing: border-box; }
 body { margin: 0; background: var(--bg); color: var(--text); font: 14px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
-header { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 16px; padding: 14px 20px; background: var(--card); border-bottom: 1px solid var(--line); position: sticky; top: 0; z-index: 2; }
+header { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 16px; padding: 12px 20px 0; background: var(--card); border-bottom: 1px solid var(--line); position: sticky; top: 0; z-index: 2; }
 header h1 { font-size: 18px; margin: 0; }
 header .meta { color: var(--muted); font-size: 13px; }
 header input { margin-left: auto; width: 200px; }
@@ -74,6 +74,47 @@ summary { cursor: pointer; color: var(--accent); font-size: 13px; user-select: n
 .jl .ext { color: var(--bad, #c0392b); }
 .err { color: var(--bad); font-size: 12px; min-height: 1em; }
 .empty { color: var(--muted); padding: 40px; text-align: center; }
+.tabs { flex-basis: 100%; display: flex; gap: 2px; overflow-x: auto; margin-bottom: -1px; scrollbar-width: thin; }
+.tab { flex: none; display: inline-flex; align-items: center; gap: 6px; max-width: 220px; padding: 7px 14px; font: inherit; font-size: 13px; color: var(--muted); background: transparent; border: 1px solid transparent; border-bottom: none; border-radius: 8px 8px 0 0; cursor: pointer; }
+.tab:hover { color: var(--text); background: var(--soft); }
+.tab.on { color: var(--text); font-weight: 600; background: var(--bg); border-color: var(--line); }
+.tab .tn { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tab .n { font-size: 11px; color: var(--muted); font-weight: 400; font-variant-numeric: tabular-nums; }
+.tab .off { width: 7px; height: 7px; border-radius: 50%; background: var(--bad); flex: none; }
+.tab.add { font-size: 16px; padding: 4px 12px; }
+.tab.arch { margin-left: auto; color: var(--muted); }
+.tab.arch.on { color: var(--text); }
+.tab.drop { outline: 2px dashed var(--accent); outline-offset: -3px; color: var(--text); }
+.hint { color: var(--muted); padding: 30px; text-align: center; }
+.gear { padding: 2px 8px; font-size: 17px; line-height: 1.3; border: 1px solid var(--line); border-radius: 8px; background: var(--soft); color: var(--text); cursor: pointer; }
+.gear:hover { border-color: var(--muted); }
+.sett { position: fixed; inset: 0; z-index: 10; background: rgba(0,0,0,.35); display: flex; align-items: flex-start; justify-content: center; padding: 50px 12px; overflow-y: auto; }
+.sett[hidden] { display: none; }
+.sett .box { background: var(--card); border: 1px solid var(--line); border-radius: 12px; width: 100%; max-width: 480px; padding: 14px 16px; }
+.sett .bh { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
+.sett h3 { margin: 0; font-size: 16px; }
+.sett h4 { margin: 10px 0 6px; font-size: 14px; color: var(--muted); font-weight: 600; }
+.sett .x { border: none; background: none; color: var(--muted); font-size: 22px; cursor: pointer; line-height: 1; }
+.grow { display: flex; align-items: center; gap: 4px; padding: 6px 0; border-top: 1px solid var(--line); }
+.grow .gn { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.grow .gn small { color: var(--muted); margin-left: 6px; }
+.grow .btn { padding: 3px 8px; }
+.grow .btn:disabled { opacity: .35; }
+.sett .q { color: var(--muted); font-size: 12px; margin-top: 8px; }
+.top[draggable] { cursor: grab; }
+.ebtn { padding: 0 6px; font-size: 14px; line-height: 1.4; border: 1px solid transparent; border-radius: 6px; background: none; color: var(--muted); cursor: pointer; }
+.ebtn:hover { border-color: var(--line); color: var(--text); }
+.cmt { margin: 2px 0 4px; font-size: 13px; color: var(--muted); white-space: pre-wrap; overflow-wrap: anywhere; }
+.cedit { display: grid; gap: 6px; margin: 8px 0 4px; padding: 8px; background: var(--soft); border-radius: 8px; }
+.cedit[hidden] { display: none; }
+.cedit .row { display: flex; gap: 6px; align-items: flex-start; flex-wrap: wrap; }
+.cedit .row > label { color: var(--muted); font-size: 13px; width: 96px; padding-top: 4px; }
+.cedit input[type=text], .cedit textarea { flex: 1; min-width: 160px; }
+textarea { padding: 4px 8px; font: inherit; font-size: 13px; color: var(--text); background: var(--card); border: 1px solid var(--line); border-radius: 6px; resize: vertical; }
+.cedit .q { color: var(--muted); font-size: 12px; }
+.gchips { display: flex; flex-wrap: wrap; gap: 6px; flex: 1; }
+.gchip { padding: 5px 10px; font: inherit; font-size: 13px; color: var(--text); background: var(--card); border: 1px solid var(--line); border-radius: 14px; cursor: pointer; }
+.gchip.on { border-color: var(--accent); color: var(--accent); font-weight: 600; }
 .group { margin-bottom: 22px; }
 .group > h2 { font-size: 15px; margin: 0 0 10px; display: flex; align-items: baseline; gap: 8px; }
 .group > h2 small { color: var(--muted); font-weight: 400; font-size: 13px; }
@@ -82,6 +123,7 @@ summary { cursor: pointer; color: var(--accent); font-size: 13px; user-select: n
 .ctl .rctl { display: flex; gap: 6px; flex-wrap: wrap; }
 .other { font-size: 12px; }
 .mdot { display: inline-block; width: 11px; height: 11px; border-radius: 50%; background: var(--muted); opacity: .55; flex: none; align-self: center; }
+.ticon.heat { color: #ea580c; } .ticon.cool { color: #2563eb; }
 .mdot.heat { background: #ea580c; opacity: 1; } .mdot.cool { background: #2563eb; opacity: 1; } .mdot.sched { background: #7c3aed; opacity: 1; } .mdot.none { visibility: hidden; }
 .hbar { display: grid; grid-template-columns: repeat(24, 1fr); gap: 1px; margin: 2px 0 4px 19px; }
 .hbar i { height: 8px; background: var(--soft); border-radius: 1px; }
@@ -114,9 +156,19 @@ summary { cursor: pointer; color: var(--accent); font-size: 13px; user-select: n
   <h1>donoff</h1>
   <span class="meta"><span class="dot" id="bdot"></span> <span id="broker">…</span></span>
   <span class="meta" id="count"></span>
-  <input type="search" id="filter" placeholder="фильтр по устройству">
+  <input type="search" id="filter" placeholder="фильтр: имя или комментарий">
+  <button class="gear" id="gear" title="настройки">⚙</button>
+  <nav class="tabs" id="tabs"></nav>
 </header>
+<div class="sett" id="sett" hidden><div class="box">
+  <div class="bh"><h3>Настройки</h3><button class="x" data-s="close" title="закрыть">×</button></div>
+  <h4>Группы</h4>
+  <div id="sgroups"></div>
+  <div class="row" style="margin-top:8px"><button class="btn" data-s="add">+ Новая группа</button></div>
+  <div class="q">Порядок здесь — порядок вкладок. Удалённая группа: её устройства станут «без группы». Переложить устройство в группу — ✎ в его карточке или перетащить карточку на вкладку.</div>
+</div></div>
 <main>
+  <div class="hint" id="hint" hidden></div>
   <div id="groups"></div>
   <datalist id="grouplist"></datalist>
   <div class="empty" id="empty" hidden>Устройств пока нет — жду сообщений от брокера…</div>
@@ -345,12 +397,18 @@ function schControls(id, el, relays, P, nowH) {
 const edits = new Map(), cardParams = new Map();
 
 const cards = new Map(), sections = new Map();
-let groups = {}, hasHistory = false;
+let groups = {}, comments = {}, hasHistory = false;
 function makeCard(id) {
   const el = document.createElement('div');
   el.className = 'card';
   el.innerHTML = `
     <div class="live"></div>
+    <div class="cedit" hidden>
+      <div class="row"><label>Группа</label><input type="text" class="grp" list="grouplist" placeholder="без группы" maxlength="40"></div>
+      <div class="row"><label></label><div class="gchips"></div></div>
+      <div class="row"><label>Комментарий</label><textarea class="cmt-in" rows="3" maxlength="300" placeholder="что это и где стоит"></textarea></div>
+      <div class="row"><label></label><button class="btn primary" data-e="save">Сохранить</button><button class="btn" data-e="cancel">Отмена</button><span class="q">Ctrl+Enter — сохранить</span></div>
+    </div>
     <div class="hbtn" hidden><a class="sp hlink"><div class="spk"></div><div class="sc"></div></a><a class="go hlink" title="все графики">›</a></div>
     <details>
       <summary>Управление</summary>
@@ -364,7 +422,6 @@ function makeCard(id) {
         <div class="schctl"></div>
         <div class="row"><label>Режим</label><button class="btn" data-a="cool">❄ Охлаждение</button><button class="btn" data-a="heat">🔥 Нагрев</button><button class="btn" data-a="autooff">Выкл авто</button></div>
         <div class="row"><label>Запросить</label><button class="btn" data-q="sh tlevels">уставки</button><button class="btn" data-a="askmode">режим</button><button class="btn" data-q="sh time">время</button><button class="btn" data-q="sh ip">ip</button></div>
-        <div class="row"><label>Группа</label><input type="text" class="grp" list="grouplist" placeholder="без группы"><button class="btn" data-a="grp">Сохранить</button></div>
         <details class="jrn"><summary>Журнал команд</summary><div class="jl"></div></details>
       </div>
     </details>
@@ -383,11 +440,6 @@ function makeCard(id) {
     if (a === 'cool') { if (await send(id, 'cooler=1', el, 'включить режим ОХЛАЖДЕНИЯ?')) { await sleep(1200); askMode(id, el); } return; }
     if (a === 'heat') { if (await send(id, 'hotter=1', el, 'включить режим НАГРЕВА?')) { await sleep(1200); askMode(id, el); } return; }
     if (a === 'autooff') { if (await send(id, 'hotter=0', el, 'выключить автоматику (hotter=0, затем cooler=0)? Реле выключится.')) { await sleep(1200); if (await send(id, 'cooler=0', el)) { await sleep(1200); askMode(id, el); } } return; }
-    if (a === 'grp') {
-      try { await api('/api/v1/group', { method: 'PUT', body: JSON.stringify({ dev: id, group: el.querySelector('.grp').value }) }); el.querySelector('.grp').dataset.dirty = ''; el.querySelector('.err').textContent = ''; refresh(); }
-      catch (e) { el.querySelector('.err').textContent = e.message; }
-      return;
-    }
     if (a === 'raw') return rawSend();
   });
   // the command line: "sh ..." goes at once, a setting asks first; ↑/↓ walk the commands sent from this card
@@ -405,7 +457,50 @@ function makeCard(id) {
     else if (e.key === 'ArrowDown' && hi < hist.length) { e.preventDefault(); hi++; raw.value = hist[hi] || ''; }
   });
   el.querySelectorAll('.hlink').forEach(a => a.href = '/history?dev=' + encodeURIComponent(id));
-  el.querySelector('.grp').addEventListener('input', e => { e.target.dataset.dirty = '1'; });
+  // the group and the comment: ✎ in the title opens the editor
+  const ced = el.querySelector('.cedit');
+  const closeEd = () => { ced.hidden = true; };
+  // the known groups as buttons: one tap puts the device there, no typing on a phone
+  const gchips = el.querySelector('.gchips');
+  function markChips() {
+    const v = el.querySelector('.grp').value.trim();
+    gchips.querySelectorAll('.gchip').forEach(c => c.classList.toggle('on', c.dataset.g === v));
+  }
+  function fillChips() {
+    const names = shownGroups;
+    gchips.innerHTML = names.map(n => `<button type="button" class="gchip" data-g="${esc(n)}">${esc(n)}</button>`).join('')
+      + '<button type="button" class="gchip" data-g="">без группы</button>'
+      + `<button type="button" class="gchip" data-g="${ARCH}">🗄 ${ARCH}</button>`;
+    markChips();
+  }
+  el.querySelector('.grp').addEventListener('input', markChips);
+  async function saveEd() {
+    const g = el.querySelector('.grp').value.trim(), c = el.querySelector('.cmt-in').value.trim();
+    try {
+      if (g !== (groups[id] || '')) await api('/api/v1/group', { method: 'PUT', body: JSON.stringify({ dev: id, group: g }) });
+      if (c !== (comments[id] || '')) await api('/api/v1/comment', { method: 'PUT', body: JSON.stringify({ dev: id, comment: c }) });
+      el.querySelector('.err').textContent = ''; closeEd(); refresh();
+    } catch (e) { el.querySelector('.err').textContent = e.message; }
+  }
+  el.addEventListener('click', e => {
+    const ch = e.target.closest('.gchip');
+    if (ch) { el.querySelector('.grp').value = ch.dataset.g; markChips(); return; }
+    const b = e.target.closest('[data-e]'); if (!b) return;
+    if (b.dataset.e === 'edit') {
+      if (!ced.hidden) return closeEd();
+      el.querySelector('.grp').value = groups[id] || '';
+      fillChips();
+      el.querySelector('.cmt-in').value = comments[id] || '';
+      ced.hidden = false; el.querySelector('.cmt-in').focus();
+    } else if (b.dataset.e === 'save') saveEd();
+    else if (b.dataset.e === 'cancel') closeEd();
+  });
+  ced.addEventListener('keydown', e => {
+    if (e.key === 'Escape') closeEd();
+    else if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); saveEd(); }
+  });
+  // drag the card by its title onto a tab: it goes into that group
+  el.addEventListener('dragstart', e => { if (!e.target.closest || !e.target.closest('.top')) return; e.dataTransfer.setData('text/x-dev', id); e.dataTransfer.effectAllowed = 'move'; });
   cards.set(id, el);
   return el;
 }
@@ -445,11 +540,16 @@ function render(d) {
     const dd = sched ? ['sched', 'по часам: ' + schName(sn)] : i === 0 ? mdot : ['none', ''];
     const bar = sched ? hbar(schBits(P, sn), nowH) : '';
     const ao = i < 2 ? aofsNum(P, i + 1) : null, q = x => x === null ? '?' : x;
-    const cfg = i < 2 ? `<span class="t cfg" title="lschm — расписание по часам, aofs — сколько секунд реле включено в начале часа (полив), 0 — весь час">lschm ${q(sn)} · aofs ${q(ao)}${ao > 0 ? ' с' : ''}</span>` : '';
+    // the first relay under the thermostat: the set point and the hysteresis instead of lschm/aofs
+    const lvl = P.tls ? parseLevels(P.tls.v) : null;
+    const thermo = i === 0 && !sched && m && (m.k === 'heat' || m.k === 'cool');
+    const cfg = thermo ? `<span class="t cfg" title="${m.k === 'heat' ? 'нагрев' : 'охлаждение'}: порог / гистерезис (sh tlevels)"><span class="ticon ${m.k}">${m.k === 'heat' ? '☀\uFE0E' : '❄\uFE0E'}</span> ${lvl ? lvl.c + '°' : '?'} / ${lvl ? lvl.dt + '°' : '?'}</span>`
+      : i < 2 ? `<span class="t cfg" title="lschm — расписание по часам, aofs — сколько секунд реле включено в начале часа (полив), 0 — весь час">lschm ${q(sn)} · aofs ${q(ao)}${ao > 0 ? ' с' : ''}</span>` : '';
     return `<div class="relay"><span class="mdot ${dd[0]}" title="${esc(dd[1])}"></span><span class="name">${esc(k.replace(/^relays\//, ''))}</span><span class="pill ${on ? 'on' : 'off'}">${on ? 'ВКЛ' : 'ВЫКЛ'}</span><span class="t">${tm}${sched ? ` · по часам${ao > 0 ? `, полив ${ao} с в начале часа` : ''}` : ''}</span>${cfg}</div>${bar}`;
   }).join('');
   el.querySelector('.live').innerHTML = `
-    <div class="top"><span class="dot ${dot}"></span><h2>${esc(d.id)}</h2><span class="seen">${ago(d.last_seen)} назад</span></div>
+    <div class="top" draggable="true" title="перетащите на вкладку, чтобы перенести в группу"><span class="dot ${dot}"></span><h2>${esc(d.id)}</h2><span class="seen">${ago(d.last_seen)} назад</span><button class="ebtn" data-e="edit" title="группа и комментарий">✎</button></div>
+    ${comments[d.id] ? `<div class="cmt">${esc(comments[d.id])}</div>` : ''}
     ${a > 300 ? `<div class="lost"><b>Нет связи</b> · последний раз ${new Date(d.last_seen).toLocaleString('ru-RU', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })} (${ago(d.last_seen)} назад)</div>` : ''}
     ${pt ? `<div class="big">${esc(pt[1].v)} <small>°C${ctemp !== null ? ` (${esc(ctemp)})` : ''}</small><span class="lbl">${esc(sensorName(pt[0]))}</span></div>` : ''}
     ${rows.length ? `<div class="kv">${rows.map(([k, v]) => `<span>${k}</span><span>${v}</span>`).join('')}</div>` : ''}
@@ -462,8 +562,6 @@ function render(d) {
   schControls(d.id, el, relays, P, nowH);
   el.querySelector('.hbtn').hidden = !(hasHistory && (relays.length || sensors.length || pt));
   if (hasHistory) spark(d.id, el);
-  const g = el.querySelector('.grp');
-  if (!g.dataset.dirty && document.activeElement !== g) g.value = groups[d.id] || '';
   // the last answer with levels: "C=2600,D=2600,N=2600 dT=100"
   const lv = P.tls;
   el.querySelector('.levels').textContent = lv
@@ -491,17 +589,46 @@ async function refresh() {
   now = new Date(s.now);
   $('bdot').className = 'dot ' + (s.broker.connected ? 'ok' : 'bad');
   $('broker').textContent = `${s.broker.user}@${s.broker.server}` + (s.broker.connected ? '' : ' — ' + (s.broker.error || 'подключение…'));
-  const f = $('filter').value.trim().toLowerCase();
-  const devs = (s.devices || []).filter(d => !f || d.id.toLowerCase().includes(f));
-  $('count').textContent = `устройств: ${(s.devices || []).length}`;
   groups = s.groups || {};
+  comments = s.comments || {};
   hasHistory = !!s.history;
-  const names = [...new Set(Object.values(groups))].sort((x, y) => x.localeCompare(y, 'ru'));
+  const f = $('filter').value.trim().toLowerCase();
+  const all = s.devices || [];
+  const devs = all.filter(d => !f || d.id.toLowerCase().includes(f) || (comments[d.id] || '').toLowerCase().includes(f));
+  const nArch = all.filter(d => groups[d.id] === ARCH).length;
+  $('count').textContent = `устройств: ${all.length - nArch}` + (nArch ? `, в архиве ${nArch}` : '');
+  // "Архив": old devices, a tab of its own at the end, not shown on "Все" and not counted as offline
+  groupOrder = s.group_order || [];
+  const oi = n => { const i = groupOrder.indexOf(n); return i < 0 ? 1e9 : i; };
+  const byOrder = (x, y) => oi(x) - oi(y) || x.localeCompare(y, 'ru');
+  const names = [...new Set(Object.values(groups))].filter(n => n !== ARCH).sort(byOrder);
+  pending = pending.filter(n => !names.includes(n) && n !== ARCH);
+  shownGroups = [...names, ...pending];
+  savePending();
   $('grouplist').innerHTML = names.map(n => `<option value="${esc(n)}">`).join('');
   const by = new Map(names.map(n => [n, []]));
-  by.set('', []);
+  by.set('', []); by.set(ARCH, []);
   for (const d of devs) by.get(groups[d.id] && by.has(groups[d.id]) ? groups[d.id] : '').push(d);
-  const order = [...names, ''].filter(n => by.get(n).length);
+  // the tabs: all, every group, the devices without a group, the groups made here and still empty, "+"
+  const allBy = new Map(names.map(n => [n, []])); allBy.set('', []); allBy.set(ARCH, []);
+  for (const d of all) allBy.get(groups[d.id] && allBy.has(groups[d.id]) ? groups[d.id] : '').push(d);
+  groupCount = n => allBy.get(n) ? allBy.get(n).length : 0;
+  if (!$('sett').hidden) fillSettings();
+  const tabList = [['*', 'Все', all.filter(d => groups[d.id] !== ARCH)], ...names.map(n => [n, n, allBy.get(n)])];
+  if ((names.length || nArch) && allBy.get('').length) tabList.push(['', 'Без группы', allBy.get('')]);
+  for (const n of pending) tabList.push([n, n, []]);
+  tabList.push([ARCH, '🗄 ' + ARCH, allBy.get(ARCH)]);
+  if (all.length && !tabList.some(x => x[0] === tab)) setTab('*', false);  // a group that is gone (not before the first data)
+  const tabsHtml = tabList.map(([k, label, list]) => {
+    const off = k !== ARCH && list.some(d => age(d.last_seen) > 300);
+    return `<button class="tab${k === tab ? ' on' : ''}${k === ARCH ? ' arch' : ''}" data-g="${esc(k)}" title="${esc(label)}"><span class="tn">${esc(label)}</span><span class="n">${list.length}</span>${off ? '<span class="off" title="есть устройства без связи"></span>' : ''}</button>`;
+  }).join('') + '<button class="tab add" data-g="+" title="новая группа">+</button>';
+  const tb = $('tabs');
+  if (tb.dataset.html !== tabsHtml) { tb.innerHTML = tabsHtml; tb.dataset.html = tabsHtml; }
+  const order = (tab === '*' ? [...names, ''] : [tab]).filter(n => by.has(n) && by.get(n).length);
+  const hint = $('hint');
+  hint.hidden = !(tab !== '*' && !order.length && all.length);
+  if (!hint.hidden) hint.textContent = f ? 'Ничего не найдено по фильтру.' : tab === ARCH ? 'Архив пуст: сюда кладут старые устройства (✎ в карточке → «Архив», или перетащите карточку на эту вкладку). На «Все» они не показываются.' : 'В группе пока нет устройств: перетащите сюда карточку за заголовок (на вкладке «Все») или нажмите ✎ в карточке и укажите эту группу.';
   const root = $('groups');
   const wantSec = order.map(n => {
     let sec = sections.get(n);
@@ -511,7 +638,8 @@ async function refresh() {
       sections.set(n, sec);
     }
     const list = by.get(n);
-    sec.querySelector('.gname').textContent = n || (names.length ? 'Без группы' : 'Устройства');
+    sec.querySelector('h2').hidden = tab !== '*';
+    sec.querySelector('.gname').textContent = n || (names.length || nArch ? 'Без группы' : 'Устройства');
     sec.querySelector('small').textContent = list.length;
     const grid = sec.querySelector('.grid');
     const want = list.map(render);
@@ -521,9 +649,102 @@ async function refresh() {
   });
   [...root.children].forEach(c => { if (!wantSec.includes(c)) c.remove(); });
   wantSec.forEach((c, i) => { if (root.children[i] !== c) root.insertBefore(c, root.children[i] || null); });
-  $('empty').hidden = devs.length > 0;
+  $('empty').hidden = all.length > 0;
 }
 
+// the open tab: in the address (#g=...) and remembered in this browser; "*" = all, "" = without a group
+let tab = '*', pending = [], groupOrder = [], shownGroups = [], groupCount = () => 0;
+const ARCH = 'Архив';
+try { pending = JSON.parse(localStorage.getItem('donoff.pendingGroups') || '[]').filter(x => typeof x === 'string'); } catch (e) { pending = []; }
+function savePending() { try { localStorage.setItem('donoff.pendingGroups', JSON.stringify(pending)); } catch (e) {} }
+function setTab(t, go = true) {
+  tab = t;
+  try { localStorage.setItem('donoff.tab', t); } catch (e) {}
+  const h = t === '*' ? '' : '#g=' + encodeURIComponent(t);
+  if (location.hash !== h) history.replaceState(null, '', h || location.pathname + location.search);
+  if (go) { $('tabs').dataset.html = ''; refresh(); }
+}
+{
+  const m = location.hash.match(/^#g=(.*)$/);
+  if (m) tab = decodeURIComponent(m[1]);
+  else { try { tab = localStorage.getItem('donoff.tab') ?? '*'; } catch (e) {} }
+}
+window.addEventListener('hashchange', () => { const m = location.hash.match(/^#g=(.*)$/); setTab(m ? decodeURIComponent(m[1]) : '*'); });
+$('tabs').addEventListener('click', e => {
+  const b = e.target.closest('.tab'); if (!b) return;
+  if (b.dataset.g !== '+') return setTab(b.dataset.g);
+  const n = newGroup();
+  if (n) setTab(n);
+});
+const dropTab = e => { const b = e.target.closest && e.target.closest('.tab'); return b && b.dataset.g !== '*' && b.dataset.g !== '+' ? b : null; };
+$('tabs').addEventListener('dragover', e => {
+  const b = dropTab(e); if (!b || !e.dataTransfer.types.includes('text/x-dev')) return;
+  e.preventDefault(); e.dataTransfer.dropEffect = 'move';
+  $('tabs').querySelectorAll('.drop').forEach(x => x !== b && x.classList.remove('drop')); b.classList.add('drop');
+});
+$('tabs').addEventListener('dragleave', e => { const b = dropTab(e); if (b && !b.contains(e.relatedTarget)) b.classList.remove('drop'); });
+$('tabs').addEventListener('drop', async e => {
+  const b = dropTab(e); if (!b) return;
+  e.preventDefault(); b.classList.remove('drop');
+  const dev = e.dataTransfer.getData('text/x-dev'); if (!dev) return;
+  try { await api('/api/v1/group', { method: 'PUT', body: JSON.stringify({ dev, group: b.dataset.g }) }); $('tabs').dataset.html = ''; refresh(); }
+  catch (err) { alert(err.message); }
+});
+// settings (⚙): the groups — order of the tabs, rename, delete; later the users go here too
+function newGroup() {
+  const n = (prompt('Название новой группы (до 40 символов):') || '').trim().slice(0, 40);
+  if (!n) return null;
+  if (n === ARCH) { alert('«Архив» уже есть.'); return null; }
+  if (!Object.values(groups).includes(n) && !pending.includes(n)) { pending.push(n); savePending(); }
+  return n;
+}
+function fillSettings() {
+  const last = shownGroups.length - 1;
+  const html = shownGroups.map((n, i) => `<div class="grow" data-n="${esc(n)}"><span class="gn">${esc(n)}<small>${groupCount(n)}</small></span>`
+    + `<button class="btn" data-s="up" title="левее"${i ? '' : ' disabled'}>▲</button><button class="btn" data-s="down" title="правее"${i < last ? '' : ' disabled'}>▼</button>`
+    + `<button class="btn" data-s="ren" title="переименовать">✎</button><button class="btn" data-s="del" title="удалить группу">🗑</button></div>`).join('')
+    + `<div class="grow"><span class="gn">🗄 ${ARCH}<small>${groupCount(ARCH)}</small></span><span class="q" style="margin:0">всегда последняя</span></div>`;
+  const box = $('sgroups');
+  if (box.dataset.html !== html) { box.innerHTML = html; box.dataset.html = html; }
+}
+async function groupsChanged() { $('tabs').dataset.html = ''; await refresh(); fillSettings(); }
+$('gear').addEventListener('click', () => { $('sett').hidden = false; fillSettings(); });
+$('sett').addEventListener('click', async e => {
+  if (e.target === $('sett')) { $('sett').hidden = true; return; }
+  const b = e.target.closest('[data-s]'); if (!b) return;
+  const n = b.closest('.grow') ? b.closest('.grow').dataset.n : null;
+  try {
+    switch (b.dataset.s) {
+      case 'close': $('sett').hidden = true; return;
+      case 'add': if (newGroup()) await groupsChanged(); return;
+      case 'up': case 'down': {
+        const ord = [...shownGroups], i = ord.indexOf(n), j = i + (b.dataset.s === 'up' ? -1 : 1);
+        if (i < 0 || j < 0 || j >= ord.length) return;
+        [ord[i], ord[j]] = [ord[j], ord[i]];
+        await api('/api/v1/group/order', { method: 'PUT', body: JSON.stringify({ order: ord }) });
+        return groupsChanged();
+      }
+      case 'ren': {
+        const to = (prompt(`Новое название группы «${n}»:`, n) || '').trim().slice(0, 40);
+        if (!to || to === n) return;
+        if (to === ARCH) return alert('«Архив» — особая группа, переложите устройства в неё через ✎ в карточке.');
+        if (pending.includes(n)) { pending = pending.map(x => x === n ? to : x); savePending(); }
+        else await api('/api/v1/group/rename', { method: 'POST', body: JSON.stringify({ from: n, to }) });
+        if (tab === n) setTab(to, false);
+        return groupsChanged();
+      }
+      case 'del': {
+        const c = groupCount(n);
+        if (!confirm(`Удалить группу «${n}»?` + (c ? `\n\nЕё устройства (${c}) станут «без группы».` : ''))) return;
+        pending = pending.filter(x => x !== n); savePending();
+        await api('/api/v1/group/delete', { method: 'POST', body: JSON.stringify({ name: n }) });
+        if (tab === n) setTab('*', false);
+        return groupsChanged();
+      }
+    }
+  } catch (err) { alert(err.message); }
+});
+document.addEventListener('keydown', e => { if (e.key === 'Escape' && !$('sett').hidden) $('sett').hidden = true; });
 $('filter').addEventListener('input', refresh);
 refresh(); setInterval(refresh, 2000);
 </script>

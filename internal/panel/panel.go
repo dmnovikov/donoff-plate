@@ -8,6 +8,10 @@
 //	GET  /history          ?dev=dmzk10: the page with the charts
 //	GET  /api/v1/history   ?dev=dmzk10&range=15m|1h|6h|24h|7d|30d: temperatures and relays from InfluxDB (with --influx)
 //	PUT  /api/v1/group     {"dev": "dmzk10", "group": "Теплицы"} ("" = no group); kept in the groups file
+//	POST /api/v1/group/rename {"from": "Теплицы", "to": "Теплицы 2"}: every device of the group moves, the order keeps its place
+//	POST /api/v1/group/delete {"name": "Теплицы"}: its devices are left without a group
+//	PUT  /api/v1/group/order  {"order": ["Ташкент", "Доможирка"]}: the order of the group tabs; kept next to the groups file (-order.json)
+//	PUT  /api/v1/comment   {"dev": "dmzk10", "comment": "теплица у забора"} ("" = none); kept in the comments file
 package panel
 
 import (
@@ -24,6 +28,7 @@ import (
 	"net/netip"
 	"os"
 	"regexp"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -132,17 +137,20 @@ type Hub struct {
 	creds Creds
 	cli   paho.Client
 
-	mu         sync.Mutex
-	dev        map[string]*Device
-	st         BrokerState
-	groups     map[string]string // dev_id -> group
-	groupsPath string
-	cmdsPath   string  // the command journal, one JSON object per line ("" = page only)
-	influx     *Influx // nil = no history
+	mu           sync.Mutex
+	dev          map[string]*Device
+	st           BrokerState
+	groups       map[string]string // dev_id -> group
+	groupsPath   string
+	groupOrder   []string          // the group tabs in this order; the others go after them by name
+	comments     map[string]string // dev_id -> what it is, where it is
+	commentsPath string
+	cmdsPath     string  // the command journal, one JSON object per line ("" = page only)
+	influx       *Influx // nil = no history
 }
 
 func New(c Creds) *Hub {
-	return &Hub{creds: c, dev: map[string]*Device{}, groups: map[string]string{},
+	return &Hub{creds: c, dev: map[string]*Device{}, groups: map[string]string{}, comments: map[string]string{},
 		st: BrokerState{Server: net.JoinHostPort(c.Host, strconv.Itoa(c.Port)), User: c.User, Since: time.Now()}}
 }
 
@@ -151,19 +159,117 @@ func (h *Hub) LoadGroups(path string) error {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	h.groupsPath = path
-	b, err := os.ReadFile(path)
+	if err := loadMap(path, &h.groups); err != nil {
+		return err
+	}
+	b, err := os.ReadFile(orderPath(path))
 	if errors.Is(err, os.ErrNotExist) {
 		return nil
 	}
 	if err != nil {
 		return err
 	}
-	g := map[string]string{}
-	if err := json.Unmarshal(b, &g); err != nil {
-		return fmt.Errorf("%s: %w", path, err)
+	if err := json.Unmarshal(b, &h.groupOrder); err != nil {
+		return fmt.Errorf("%s: %w", orderPath(path), err)
 	}
-	h.groups = g
 	return nil
+}
+
+func orderPath(groups string) string { return strings.TrimSuffix(groups, ".json") + "-order.json" }
+
+func checkGroupName(g string) error {
+	if len([]rune(g)) > 40 || strings.ContainsAny(g, "\r\n") {
+		return errors.New("a group name is one line, up to 40 characters")
+	}
+	return nil
+}
+
+// RenameGroup moves every device of a group into another name (an existing group too: they merge).
+func (h *Hub) RenameGroup(from, to string) error {
+	from, to = strings.TrimSpace(from), strings.TrimSpace(to)
+	if from == "" || to == "" {
+		return errors.New("both names are needed")
+	}
+	if err := checkGroupName(to); err != nil {
+		return err
+	}
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	for d, g := range h.groups {
+		if g == from {
+			h.groups[d] = to
+		}
+	}
+	if err := writeJSON(h.groupsPath, h.groups); err != nil {
+		return err
+	}
+	ord := make([]string, 0, len(h.groupOrder))
+	for _, g := range h.groupOrder {
+		if g == from {
+			g = to
+		}
+		if !slices.Contains(ord, g) {
+			ord = append(ord, g)
+		}
+	}
+	h.groupOrder = ord
+	return h.saveOrder()
+}
+
+// DeleteGroup takes every device out of a group and the group out of the order.
+func (h *Hub) DeleteGroup(name string) error {
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return errors.New("a name is needed")
+	}
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	for d, g := range h.groups {
+		if g == name {
+			delete(h.groups, d)
+		}
+	}
+	if err := writeJSON(h.groupsPath, h.groups); err != nil {
+		return err
+	}
+	h.groupOrder = slices.DeleteFunc(h.groupOrder, func(g string) bool { return g == name })
+	return h.saveOrder()
+}
+
+// SetGroupOrder keeps the order of the group tabs.
+func (h *Hub) SetGroupOrder(order []string) error {
+	if len(order) > 200 {
+		return errors.New("too many groups")
+	}
+	ord := []string{}
+	for _, g := range order {
+		g = strings.TrimSpace(g)
+		if err := checkGroupName(g); err != nil {
+			return err
+		}
+		if g != "" && !slices.Contains(ord, g) {
+			ord = append(ord, g)
+		}
+	}
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	h.groupOrder = ord
+	return h.saveOrder()
+}
+
+func (h *Hub) saveOrder() error {
+	if h.groupsPath == "" {
+		return nil
+	}
+	return writeJSON(orderPath(h.groupsPath), h.groupOrder)
+}
+
+// LoadComments reads the comments file ({"dmzk10": "теплица у забора", ...}); a missing file is no comments.
+func (h *Hub) LoadComments(path string) error {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	h.commentsPath = path
+	return loadMap(path, &h.comments)
 }
 
 // SetGroup puts a device into a group ("" = out of any group) and saves the file.
@@ -172,25 +278,65 @@ func (h *Hub) SetGroup(dev, group string) error {
 	switch {
 	case !devRe.MatchString(dev):
 		return errors.New("bad device id")
-	case len([]rune(group)) > 40 || strings.ContainsAny(group, "\r\n"):
-		return errors.New("a group name is one line, up to 40 characters")
+	case checkGroupName(group) != nil:
+		return checkGroupName(group)
 	}
 	h.mu.Lock()
 	defer h.mu.Unlock()
-	if group == "" {
-		delete(h.groups, dev)
-	} else {
-		h.groups[dev] = group
+	return setIn(h.groups, h.groupsPath, dev, group)
+}
+
+// SetComment keeps a free text about a device ("" = none) and saves the file.
+func (h *Hub) SetComment(dev, text string) error {
+	text = strings.TrimSpace(strings.ReplaceAll(text, "\r\n", "\n"))
+	switch {
+	case !devRe.MatchString(dev):
+		return errors.New("bad device id")
+	case len([]rune(text)) > 300 || strings.Count(text, "\n") > 5 || strings.ContainsRune(text, '\r'):
+		return errors.New("a comment is up to 300 characters and 6 lines")
 	}
-	if h.groupsPath == "" {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	return setIn(h.comments, h.commentsPath, dev, text)
+}
+
+func loadMap(path string, to *map[string]string) error {
+	b, err := os.ReadFile(path)
+	if errors.Is(err, os.ErrNotExist) {
 		return nil
 	}
-	b, _ := json.MarshalIndent(h.groups, "", "  ")
-	tmp := h.groupsPath + ".tmp"
+	if err != nil {
+		return err
+	}
+	m := map[string]string{}
+	if err := json.Unmarshal(b, &m); err != nil {
+		return fmt.Errorf("%s: %w", path, err)
+	}
+	*to = m
+	return nil
+}
+
+// setIn sets or deletes ("" ) one key and writes the whole map to path ("" = memory only).
+func setIn(m map[string]string, path, key, v string) error {
+	if v == "" {
+		delete(m, key)
+	} else {
+		m[key] = v
+	}
+	return writeJSON(path, m)
+}
+
+// writeJSON writes v to path through a temporary file ("" = memory only).
+func writeJSON(path string, v any) error {
+	if path == "" {
+		return nil
+	}
+	b, _ := json.MarshalIndent(v, "", "  ")
+	tmp := path + ".tmp"
 	if err := os.WriteFile(tmp, append(b, '\n'), 0o644); err != nil {
 		return err
 	}
-	return os.Rename(tmp, h.groupsPath)
+	return os.Rename(tmp, path)
 }
 
 // SetInflux makes every sensor value and relay state go to InfluxDB too (call before Start).
@@ -571,19 +717,27 @@ func (h *Hub) send(dev, cmd string, auto bool) error {
 }
 
 type stateView struct {
-	Broker  BrokerState       `json:"broker"`
-	Devices []Device          `json:"devices"`
-	Groups  map[string]string `json:"groups"`
-	History bool              `json:"history"` // /api/v1/history works
-	Now     time.Time         `json:"now"`
+	Broker   BrokerState       `json:"broker"`
+	Devices  []Device          `json:"devices"`
+	Groups   map[string]string `json:"groups"`
+	Comments map[string]string `json:"comments"`
+	Order    []string          `json:"group_order"`
+	History  bool              `json:"history"` // /api/v1/history works
+	Now      time.Time         `json:"now"`
 }
 
 func (h *Hub) snapshot() stateView {
 	h.mu.Lock()
 	defer h.mu.Unlock()
-	v := stateView{Broker: h.st, Now: time.Now(), Devices: []Device{}, Groups: map[string]string{}, History: h.influx != nil}
+	v := stateView{Broker: h.st, Now: time.Now(), Devices: []Device{}, Groups: map[string]string{}, Comments: map[string]string{}, Order: slices.Clone(h.groupOrder), History: h.influx != nil}
+	if v.Order == nil {
+		v.Order = []string{}
+	}
 	for k, g := range h.groups {
 		v.Groups[k] = g
+	}
+	for k, c := range h.comments {
+		v.Comments[k] = c
 	}
 	for _, d := range h.dev {
 		if d.LastSeen.IsZero() {
@@ -640,6 +794,54 @@ func (h *Hub) Handler(trusted []netip.Prefix) http.Handler {
 			return
 		}
 		if err := h.SetGroup(in.Dev, in.Group); err != nil {
+			reply(w, 400, map[string]string{"error": err.Error()})
+			return
+		}
+		reply(w, 200, map[string]string{"ok": "saved"})
+	})
+	m.HandleFunc("POST /api/v1/group/rename", func(w http.ResponseWriter, r *http.Request) {
+		var in struct{ From, To string }
+		if err := json.NewDecoder(io.LimitReader(r.Body, 1024)).Decode(&in); err != nil {
+			reply(w, 400, map[string]string{"error": "bad JSON"})
+			return
+		}
+		if err := h.RenameGroup(in.From, in.To); err != nil {
+			reply(w, 400, map[string]string{"error": err.Error()})
+			return
+		}
+		reply(w, 200, map[string]string{"ok": "saved"})
+	})
+	m.HandleFunc("POST /api/v1/group/delete", func(w http.ResponseWriter, r *http.Request) {
+		var in struct{ Name string }
+		if err := json.NewDecoder(io.LimitReader(r.Body, 1024)).Decode(&in); err != nil {
+			reply(w, 400, map[string]string{"error": "bad JSON"})
+			return
+		}
+		if err := h.DeleteGroup(in.Name); err != nil {
+			reply(w, 400, map[string]string{"error": err.Error()})
+			return
+		}
+		reply(w, 200, map[string]string{"ok": "saved"})
+	})
+	m.HandleFunc("PUT /api/v1/group/order", func(w http.ResponseWriter, r *http.Request) {
+		var in struct{ Order []string }
+		if err := json.NewDecoder(io.LimitReader(r.Body, 16384)).Decode(&in); err != nil {
+			reply(w, 400, map[string]string{"error": "bad JSON"})
+			return
+		}
+		if err := h.SetGroupOrder(in.Order); err != nil {
+			reply(w, 400, map[string]string{"error": err.Error()})
+			return
+		}
+		reply(w, 200, map[string]string{"ok": "saved"})
+	})
+	m.HandleFunc("PUT /api/v1/comment", func(w http.ResponseWriter, r *http.Request) {
+		var in struct{ Dev, Comment string }
+		if err := json.NewDecoder(io.LimitReader(r.Body, 4096)).Decode(&in); err != nil {
+			reply(w, 400, map[string]string{"error": "bad JSON"})
+			return
+		}
+		if err := h.SetComment(in.Dev, in.Comment); err != nil {
 			reply(w, 400, map[string]string{"error": err.Error()})
 			return
 		}

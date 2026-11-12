@@ -5,6 +5,8 @@ panel.token
 panel.log
 panel-tunnel.sh
 donoff-panel-groups.json
+donoff-panel-groups-order.json
+donoff-panel-comments.json
 *.tmp
 donoff-panel-devices.json
 donoff-panel-cmds.jsonl

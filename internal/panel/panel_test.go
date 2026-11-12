@@ -94,6 +94,67 @@ func TestGroups(t *testing.T) {
 	}
 }
 
+func TestComments(t *testing.T) {
+	path := t.TempDir() + "/comments.json"
+	h := New(Creds{})
+	if err := h.LoadComments(path); err != nil {
+		t.Fatal(err)
+	}
+	if err := h.SetComment("dmzk10", "  теплица у забора\r\nреле 1 — насос  "); err != nil {
+		t.Fatal(err)
+	}
+	h.SetComment("h2", "x")
+	h.SetComment("h2", " ") // removed
+	h2 := New(Creds{})
+	if err := h2.LoadComments(path); err != nil {
+		t.Fatal(err)
+	}
+	if c := h2.snapshot().Comments; len(c) != 1 || c["dmzk10"] != "теплица у забора\nреле 1 — насос" {
+		t.Fatalf("comments = %q", c)
+	}
+	if h.SetComment("a/b", "x") == nil || h.SetComment("x", strings.Repeat("я", 301)) == nil || h.SetComment("x", "1\n2\n3\n4\n5\n6\n7") == nil {
+		t.Fatal("a bad id, a long or a tall comment was taken")
+	}
+}
+
+func TestRenameAndOrder(t *testing.T) {
+	path := t.TempDir() + "/groups.json"
+	h := New(Creds{})
+	h.LoadGroups(path)
+	h.SetGroup("a", "Теплицы")
+	h.SetGroup("b", "Теплицы")
+	h.SetGroup("c", "Дом")
+	if err := h.SetGroupOrder([]string{"Дом", "Теплицы", "Дом", " "}); err != nil {
+		t.Fatal(err)
+	}
+	if err := h.RenameGroup("Теплицы", "Сад"); err != nil {
+		t.Fatal(err)
+	}
+	h2 := New(Creds{})
+	if err := h2.LoadGroups(path); err != nil {
+		t.Fatal(err)
+	}
+	v := h2.snapshot()
+	if v.Groups["a"] != "Сад" || v.Groups["b"] != "Сад" || v.Groups["c"] != "Дом" || strings.Join(v.Order, ",") != "Дом,Сад" {
+		t.Fatalf("groups = %q, order = %q", v.Groups, v.Order)
+	}
+	h2.RenameGroup("Сад", "Дом") // merge
+	if v := h2.snapshot(); v.Groups["a"] != "Дом" || strings.Join(v.Order, ",") != "Дом" {
+		t.Fatalf("after merge groups = %q, order = %q", v.Groups, v.Order)
+	}
+	h2.SetGroup("x", "Сарай")
+	h2.SetGroupOrder([]string{"Сарай", "Дом"})
+	if err := h2.DeleteGroup("Дом"); err != nil {
+		t.Fatal(err)
+	}
+	if v := h2.snapshot(); len(v.Groups) != 1 || v.Groups["x"] != "Сарай" || strings.Join(v.Order, ",") != "Сарай" {
+		t.Fatalf("after delete groups = %q, order = %q", v.Groups, v.Order)
+	}
+	if h.RenameGroup("Дом", "") == nil || h.RenameGroup("Дом", strings.Repeat("я", 41)) == nil {
+		t.Fatal("an empty or long name was taken")
+	}
+}
+
 func TestPollAndParams(t *testing.T) {
 	h := New(Creds{User: "donoff"})
 	p := "/donoff/"
