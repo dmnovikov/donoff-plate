@@ -124,7 +124,7 @@ textarea { padding: 4px 8px; font: inherit; font-size: 13px; color: var(--text);
 .other { font-size: 12px; }
 .mdot { display: inline-block; width: 11px; height: 11px; border-radius: 50%; background: var(--muted); opacity: .55; flex: none; align-self: center; }
 .ticon.heat { color: #ea580c; } .ticon.cool { color: #2563eb; }
-.mdot.heat { background: #ea580c; opacity: 1; } .mdot.cool { background: #2563eb; opacity: 1; } .mdot.sched { background: #7c3aed; opacity: 1; } .mdot.none { visibility: hidden; }
+.mdot.heat { background: #ea580c; opacity: 1; } .mdot.cool { background: #2563eb; opacity: 1; } .mdot.sched { background: #7c3aed; opacity: 1; } .mdot.none, .mdot.manual { background: transparent; border: 1.5px solid var(--muted); opacity: .8; box-sizing: border-box; }
 .hbar { display: grid; grid-template-columns: repeat(24, 1fr); gap: 1px; margin: 2px 0 4px 19px; }
 .hbar i { height: 8px; background: var(--soft); border-radius: 1px; }
 .hbar i.on { background: #7c3aed; }
@@ -527,7 +527,7 @@ function render(d) {
   // a relay on a schedule (lschm1 for the first, lschm2 for the second) gets a violet dot and the bar of 24 hours
   const P = d.params || {};
   const m = relays.length ? relayMode(P) : null;
-  const mdot = m ? { heat: ['heat', 'термостат: нагрев'], cool: ['cool', 'термостат: охлаждение'], manual: ['', 'термостат не задан'] }[m.k] : ['', 'режим ещё неизвестен'];
+  const mdot = m ? { heat: ['heat', 'термостат: нагрев'], cool: ['cool', 'термостат: охлаждение'], manual: ['manual', 'ручной режим: термостат не задан'] }[m.k] : ['', 'режим ещё неизвестен'];
   const nowH = dt && dt.synced ? (dt.h + Math.floor((dt.m + age(dt.at) / 60) / 60)) % 24 : new Date().getHours();
   const relayHtml = relays.map((k, i) => {
     const on = t[k].v === '1', n = (k.match(/^relays\/r(\d+)$/) || [])[1];
@@ -537,7 +537,7 @@ function render(d) {
       if (!on && t.time_down && t.time_down.v !== 'OFF') tm = `выкл ${esc(t.time_down.v)}`;
     }
     const sn = i < 2 ? schNum(P, i + 1) : null, sched = sn > 0;
-    const dd = sched ? ['sched', 'по часам: ' + schName(sn)] : i === 0 ? mdot : ['none', ''];
+    const dd = sched ? ['sched', 'по часам: ' + schName(sn)] : i === 0 ? mdot : ['none', 'ручной режим'];
     const bar = sched ? hbar(schBits(P, sn), nowH) : '';
     const ao = i < 2 ? aofsNum(P, i + 1) : null, q = x => x === null ? '?' : x;
     // the first relay under the thermostat: the set point and the hysteresis instead of lschm/aofs
