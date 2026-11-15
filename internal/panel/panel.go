@@ -34,6 +34,7 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"unicode/utf8"
 
 	paho "github.com/eclipse/paho.mqtt.golang"
 )
@@ -413,6 +414,67 @@ func push(l []Msg, m Msg) []Msg {
 	return l
 }
 
+var relayRe = regexp.MustCompile(`^(?:relays/r|b)(\d+)$`)
+
+// pruneByMeta: out/meta of donoff2 lists what the firmware has. The panel keeps every topic the
+// device ever sent, so after a reflash with another sensor set the old values (bme, dht, ...) stay
+// in the card; they are dropped here: sensors not in the list and relays above the count, if they
+// are older than the meta (a new topic, like the group JSON, comes after it). No meta (the old
+// firmware): nothing is dropped.
+func pruneByMeta(d *Device) {
+	m, ok := d.Topics["meta"]
+	if !ok {
+		return
+	}
+	var meta struct {
+		Relays  *int `json:"relays"`
+		Sensors []struct {
+			Name string `json:"name"`
+		} `json:"sensors"`
+	}
+	if json.Unmarshal([]byte(m.V), &meta) != nil || meta.Relays == nil {
+		return
+	}
+	names := map[string]bool{}
+	for _, x := range meta.Sensors {
+		names[x.Name] = true
+	}
+	for k, v := range d.Topics {
+		if !v.At.Before(m.At) {
+			continue
+		}
+		drop := false
+		if n, ok := strings.CutPrefix(k, "sensors/"); ok {
+			drop = !names[strings.TrimSuffix(n, "_json")] && !names[n]
+		} else if r := relayRe.FindStringSubmatch(k); r != nil {
+			i, _ := strconv.Atoi(r[1])
+			drop = i > *meta.Relays
+		} else if k == "time_comm" || k == "time_down" {
+			drop = *meta.Relays == 0
+		}
+		if drop {
+			delete(d.Topics, k)
+		}
+	}
+}
+
+var subRe = regexp.MustCompile(`^[A-Za-z0-9_./-]+$`)
+
+// cleanTopic: when the device loses a part of a packet on send (a short TCP write), the broker reads
+// the start of the next packet as the rest of it: a topic cut in the middle ("dht_humidit0") with
+// "\x00!/donoff/..." in the payload. Such a value has a strange topic or control bytes in it.
+func cleanTopic(sub, v string) bool {
+	if !subRe.MatchString(sub) || !utf8.ValidString(v) {
+		return false
+	}
+	for _, r := range v {
+		if r < 0x20 && r != '\t' && r != '\n' && r != '\r' {
+			return false
+		}
+	}
+	return true
+}
+
 func (h *Hub) onMessage(prefix, topic, payload string) {
 	rest, ok := strings.CutPrefix(topic, prefix)
 	if !ok {
@@ -449,7 +511,14 @@ func (h *Hub) onMessage(prefix, topic, payload string) {
 	case "log":
 		d.Log = push(d.Log, Msg{At: now, Text: payload})
 	default:
+		if !cleanTopic(sub, payload) {
+			log.Printf("%s: broken message dropped: %q = %q", id, sub, payload)
+			return
+		}
 		d.Topics[sub] = Value{V: payload, At: now}
+		if sub == "meta" {
+			pruneByMeta(d)
+		}
 		if h.influx != nil {
 			if l := point(id, sub, payload, now); l != "" {
 				h.influx.add(l)
@@ -937,6 +1006,12 @@ func (h *Hub) LoadDevices(path string) error {
 		if c.Topics == nil {
 			c.Topics = map[string]Value{}
 		}
+		for k, x := range c.Topics {
+			if !cleanTopic(k, x.V) {
+				delete(c.Topics, k)
+			}
+		}
+		pruneByMeta(&c)
 		if c.Params == nil {
 			c.Params = map[string]Value{}
 		}

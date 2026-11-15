@@ -54,6 +54,8 @@ main { max-width: 1400px; margin: 0 auto; padding: 16px; }
 input[type=text], input[type=number], input[type=search] { padding: 4px 8px; font: inherit; font-size: 13px; color: var(--text); background: var(--soft); border: 1px solid var(--line); border-radius: 6px; min-width: 0; }
 details { margin-top: 10px; border-top: 1px solid var(--line); padding-top: 8px; }
 summary { cursor: pointer; color: var(--accent); font-size: 13px; user-select: none; }
+details.more { margin-top: 2px; border-top: 0; padding-top: 0; }
+details.more > summary { font-size: 12px; }
 .ctl { display: grid; gap: 8px; margin-top: 8px; }
 .ctl .row { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
 .ctl .row > label { color: var(--muted); font-size: 13px; width: 108px; }
@@ -522,7 +524,12 @@ function render(d) {
   const syncHtml = dt ? (dt.synced ? ' <span class="sync ok" title="sh time: S=1">✓ синхр.</span>' : ' <span class="sync bad" title="sh time: S=0 — расписания, кроме 1 и 2, не работают">⚠ время не синхронизировано</span>') : '';
   if (clock) rows.push(['Часы устройства', `<span class="num">${esc(clock.ts)}</span>${syncHtml}`]);
   else if (dt) rows.push(['Часы устройства', `<span class="num">${dt.h}:${String(dt.m).padStart(2, '0')}</span>${syncHtml}`]);
-  for (const k of sensors) rows.push([esc(sensorName(k)), `<span class="num">${esc(t[k].v)}</span>`]);
+  // more than 4 sensors: the first 4 with values (-127 = no sensor) stay, the rest go under the arrow
+  const bad = k => Number(t[k].v) === -127;
+  const ordered = sensors.length > 4 ? [...sensors.filter(k => !bad(k)), ...sensors.filter(bad)] : sensors;
+  const srow = k => [esc(sensorName(k)), `<span class="num">${esc(t[k].v)}</span>`];
+  for (const k of ordered.slice(0, 4)) rows.push(srow(k));
+  const extra = ordered.slice(4).map(srow);
   // the thermostat relay (the first one) gets a dot: orange = heating, blue = cooling, gray = no thermostat
   // a relay on a schedule (lschm1 for the first, lschm2 for the second) gets a violet dot and the bar of 24 hours
   const P = d.params || {};
@@ -547,12 +554,14 @@ function render(d) {
       : i < 2 ? `<span class="t cfg" title="lschm — расписание по часам, aofs — сколько секунд реле включено в начале часа (полив), 0 — весь час">lschm ${q(sn)} · aofs ${q(ao)}${ao > 0 ? ' с' : ''}</span>` : '';
     return `<div class="relay"><span class="mdot ${dd[0]}" title="${esc(dd[1])}"></span><span class="name">${esc(k.replace(/^relays\//, ''))}</span><span class="pill ${on ? 'on' : 'off'}">${on ? 'ВКЛ' : 'ВЫКЛ'}</span><span class="t">${tm}${sched ? ` · по часам${ao > 0 ? `, полив ${ao} с в начале часа` : ''}` : ''}</span>${cfg}</div>${bar}`;
   }).join('');
+  const om = el.querySelector('.live details.more'), moreOpen = om ? om.open : false;
   el.querySelector('.live').innerHTML = `
     <div class="top" draggable="true" title="перетащите на вкладку, чтобы перенести в группу"><span class="dot ${dot}"></span><h2>${esc(d.id)}</h2><span class="seen">${ago(d.last_seen)} назад</span><button class="ebtn" data-e="edit" title="группа и комментарий">✎</button></div>
     ${comments[d.id] ? `<div class="cmt">${esc(comments[d.id])}</div>` : ''}
     ${a > 300 ? `<div class="lost"><b>Нет связи</b> · последний раз ${new Date(d.last_seen).toLocaleString('ru-RU', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })} (${ago(d.last_seen)} назад)</div>` : ''}
     ${pt ? `<div class="big">${esc(pt[1].v)} <small>°C${ctemp !== null ? ` (${esc(ctemp)})` : ''}</small><span class="lbl">${esc(sensorName(pt[0]))}</span></div>` : ''}
     ${rows.length ? `<div class="kv">${rows.map(([k, v]) => `<span>${k}</span><span>${v}</span>`).join('')}</div>` : ''}
+    ${extra.length ? `<details class="more"${moreOpen ? ' open' : ''}><summary>ещё ${extra.length}</summary><div class="kv">${extra.map(([k, v]) => `<span>${k}</span><span>${v}</span>`).join('')}</div></details>` : ''}
     ${relayHtml ? `<div class="relays">${relayHtml}</div>` : ''}
 `;
   const rctl = relays.map(k => (k.match(/^relays\/r(\d+)$/) || [])[1]).filter(Boolean)

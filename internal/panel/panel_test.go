@@ -3,6 +3,7 @@ package panel
 import (
 	"encoding/json"
 	"os"
+	"sort"
 	"strings"
 	"testing"
 	"time"
@@ -267,5 +268,42 @@ func TestCommandJournal(t *testing.T) {
 	b, err := os.ReadFile(path)
 	if err != nil || strings.Count(string(b), "\n") != 6 || !strings.Contains(string(b), `"cmd":"sh time","by":"panel"`) {
 		t.Fatalf("file: %v\n%s", err, b)
+	}
+}
+
+func TestBrokenPacketDropped(t *testing.T) {
+	h := New(Creds{Host: "h", Port: 1883, User: "donoff"})
+	h.onMessage("/donoff/", "/donoff/lamp1/out/sensors/jsy3_ia", "0.07")
+	h.onMessage("/donoff/", "/donoff/lamp1/out/sensors/dht_humidit0", "\xef\x01\x00+/")
+	h.onMessage("/donoff/", "/donoff/lamp1/out/inf0", "'\x00!/dono")
+	h.onMessage("/donoff/", "/donoff/lamp1/out/in0(", "\x00!/donoff/lamp1/ou")
+	tp := h.snapshot().Devices[0].Topics
+	if len(tp) != 1 || tp["sensors/jsy3_ia"].V != "0.07" {
+		t.Fatalf("topics: %v", tp)
+	}
+}
+
+func TestPruneByMeta(t *testing.T) {
+	h := New(Creds{Host: "h", Port: 1883, User: "donoff"})
+	p := "/donoff/"
+	for _, k := range []string{"sensors/bme_temp", "sensors/dht_temp_json", "sensors/jsy3_ia", "relays/r1", "relays/r2", "time_down", "temp_in"} {
+		h.onMessage(p, p+"lamp1/out/"+k, "-127")
+	}
+	h.mu.Lock()
+	for k, v := range h.dev["lamp1"].Topics { // make them older than the meta
+		v.At = v.At.Add(-time.Minute)
+		h.dev["lamp1"].Topics[k] = v
+	}
+	h.mu.Unlock()
+	h.onMessage(p, p+"lamp1/out/meta", `{"type":"sensor","relays":1,"sensors":[{"name":"jsy3_ia"}]}`)
+	h.onMessage(p, p+"lamp1/out/sensors/jsy3_json", "{}") // after the meta: kept
+	tp := h.snapshot().Devices[0].Topics
+	var got []string
+	for k := range tp {
+		got = append(got, k)
+	}
+	sort.Strings(got)
+	if strings.Join(got, " ") != "meta relays/r1 sensors/jsy3_ia sensors/jsy3_json temp_in time_down" {
+		t.Fatalf("topics: %v", got)
 	}
 }
