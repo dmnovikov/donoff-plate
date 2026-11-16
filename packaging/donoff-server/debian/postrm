@@ -1,0 +1,32 @@
+#!/bin/sh
+#
+# donoff-server postrm: purge drops the settings and the panel state; the InfluxDB data stays
+# (the influxdb2 package keeps it in /var/lib/influxdb), and so does its token.
+#
+set -e
+case "$1" in
+remove)
+	if [ -d /run/systemd/system ]; then
+		systemctl daemon-reload || true
+		systemctl try-restart mosquitto.service influxdb.service || true
+		systemctl reload-or-restart avahi-daemon.service || true
+	fi
+	;;
+purge)
+	rm -rf /var/lib/donoff-panel
+	# the token stays while the InfluxDB data stays: a new install writes to the same history
+	if [ -d /var/lib/influxdb/engine ]; then
+		find /etc/donoff-server -mindepth 1 ! -name influx.creds ! -name influx-admin -delete 2>/dev/null || true
+		echo "donoff-server: данные InfluxDB остаются, их токен в /etc/donoff-server/influx.creds"
+	else
+		rm -rf /etc/donoff-server
+	fi
+	rm -f /etc/mosquitto/donoff.passwd /etc/mosquitto/conf.d/donoff-bridge.conf
+	rm -f /etc/systemd/system/influxdb.service.d/donoff-port.conf
+	if [ -e /usr/share/debconf/confmodule ]; then
+		. /usr/share/debconf/confmodule
+		db_purge
+	fi
+	;;
+esac
+exit 0

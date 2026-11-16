@@ -1,0 +1,21 @@
+[Unit]
+Description=donoff panel: the tiles of the sockets and their history (page :8090)
+After=network-online.target mosquitto.service influxdb.service
+Wants=network-online.target
+# "donoff-server passwd" writes it
+ConditionFileNotEmpty=/etc/donoff-server/mqtt.creds
+
+[Service]
+User=donoff
+Group=donoff
+StateDirectory=donoff-panel
+WorkingDirectory=/var/lib/donoff-panel
+Environment=PANEL_ARGS=
+EnvironmentFile=-/etc/default/donoff-panel
+# no history until "donoff-server influx-setup" wrote influx.creds
+ExecStart=/bin/sh -c 'i=/etc/donoff-server/influx.creds; [ -s $i ] || i=; exec /usr/bin/donoff-panel --creds /etc/donoff-server/mqtt.creds --influx "$i" $PANEL_ARGS'
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,6 @@
+#!/bin/sh
+set -e
+. /usr/share/debconf/confmodule
+db_input high donoff-server/mqtt_user || true
+db_input high donoff-server/mqtt_password || true
+db_go || true

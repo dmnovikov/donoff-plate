@@ -1,0 +1,18 @@
+Package: donoff-server
+Version: @VERSION@
+Section: net
+Priority: optional
+Architecture: @ARCH@
+Installed-Size: @SIZE@
+Depends: mosquitto, influxdb2, avahi-daemon, curl, adduser, debconf (>= 0.5) | debconf-2.0
+Maintainer: NapiLab <info@napilab.ru>
+Homepage: https://github.com/dmnovikov/donoff-plate
+Description: Local server of the donoff sockets: broker, history, panel
+ The broker (mosquitto on 1883 for the LAN, announced by avahi as _mqtt._tcp
+ donoff=1: donoff2 sockets find it themselves), the history (InfluxDB 2, org
+ and bucket donoff, set up on install) and donoff-panel: the tiles of the
+ sockets, the commands, the groups and the history graphs on :8090.
+ .
+ The broker user of the sockets is asked on install (donoff by default);
+ "donoff-server passwd" changes it. The bridge to mqtt.lab240.ru is off:
+ "donoff-server bridge on <devices>". "donoff-server show" tells the state.

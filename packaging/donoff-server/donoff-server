@@ -1,0 +1,201 @@
+#!/bin/sh
+# donoff-server: the local server of the donoff sockets: mosquitto (the broker, found by the
+# sockets by mDNS), InfluxDB 2 (the history) and donoff-panel (the tiles and the history, :8090).
+set -e
+
+CONF=/etc/donoff-server
+PASSWD=/etc/mosquitto/donoff.passwd
+BRIDGE=/etc/mosquitto/conf.d/donoff-bridge.conf
+# InfluxDB is on 8086, or on the port the package chose when 8086 was taken (EliCont lic_host)
+PORTCONF=/etc/systemd/system/influxdb.service.d/donoff-port.conf
+IPORT=$(sed -n 's/.*INFLUXD_HTTP_BIND_ADDRESS=.*:\([0-9]*\).*/\1/p' $PORTCONF 2>/dev/null | tail -1 || true)
+IPORT=${IPORT:-8086}
+INFLUX=http://127.0.0.1:$IPORT
+
+usage() {
+	cat <<'EOF'
+donoff-server show                     the services, the page, the users, the bridge
+donoff-server passwd [user]            add a broker user or change the password (default: the
+                                       user of the panel, donoff); the panel's user also goes
+                                       into mqtt.creds
+donoff-server deluser <user>           drop a broker user
+donoff-server bridge                   the bridge to mqtt.lab240.ru: on or off, which devices
+donoff-server bridge on <dev...>|all   bridge these devices (/donoff/<dev>/#) or all /donoff/#
+        [--user U] [--host H:P]        (default donoff, mqtt.lab240.ru:8883 over TLS)
+donoff-server bridge off
+donoff-server influx-setup             first setup of InfluxDB: org/bucket donoff, the token for
+                                       the panel (done by the package; again after a reset)
+EOF
+}
+
+need_root() { [ "$(id -u)" = 0 ] || { echo "нужен root (sudo)" >&2; exit 1; }; }
+rand() { head -c 48 /dev/urandom | base64 | tr -dc 'A-Za-z0-9' | head -c "$1"; }
+
+# the password: the argument-less way only (not in ps, not in the shell history)
+ask_pw() {
+	if [ -t 0 ]; then
+		stty -echo; printf '%s' "$1" >&2; read -r p1; printf '\n' >&2
+		printf 'ещё раз: ' >&2; read -r p2; printf '\n' >&2; stty echo
+		[ "$p1" = "$p2" ] || { echo "пароли не совпали" >&2; exit 1; }
+	else
+		read -r p1
+	fi
+	[ -n "$p1" ] || { echo "пустой пароль" >&2; exit 1; }
+	PW=$p1
+}
+
+reload_mosquitto() {
+	[ -d /run/systemd/system ] || return 0
+	systemctl "$1" mosquitto.service
+}
+
+# the panel connects as the sockets' user: its topics are /<user>/<device>/...
+panel_user() { sed -n 2p $CONF/mqtt.creds 2>/dev/null || true; }
+
+cmd_passwd() {
+	need_root
+	u=${1:-$(panel_user)}
+	u=${u:-donoff}
+	ask_pw "пароль для $u: "
+	[ -f $PASSWD ] || install -m 640 -o root -g mosquitto /dev/null $PASSWD
+	mosquitto_passwd -b $PASSWD "$u" "$PW" 2>/dev/null
+	chown root:mosquitto $PASSWD; chmod 640 $PASSWD
+	reload_mosquitto reload
+	echo "пользователь $u: пароль задан"
+	pu=$(panel_user)
+	if [ -z "$pu" ] || [ "$pu" = "$u" ]; then
+		(umask 027; printf '127.0.0.1\n%s\n%s\n' "$u" "$PW" > $CONF/mqtt.creds)
+		chown root:donoff $CONF/mqtt.creds
+		if [ -d /run/systemd/system ]; then systemctl restart donoff-panel.service || true; fi
+		echo "панель подключается как $u"
+	fi
+}
+
+cmd_deluser() {
+	need_root
+	[ -n "$1" ] || { usage; exit 2; }
+	[ "$1" != "$(panel_user)" ] || { echo "под $1 подключается панель" >&2; exit 1; }
+	mosquitto_passwd -D $PASSWD "$1" 2>/dev/null
+	reload_mosquitto reload
+	echo "пользователь $1 удалён"
+}
+
+cmd_bridge() {
+	case "$1" in
+	"")
+		if [ -f $BRIDGE ]; then
+			echo "мост включён: $(sed -n 's/^address //p' $BRIDGE)"
+			sed -n 's/^topic \([^ ]*\) .*/  \1/p' $BRIDGE
+		else
+			echo "мост выключен"
+		fi
+		;;
+	off)
+		need_root
+		rm -f $BRIDGE
+		reload_mosquitto restart
+		echo "мост выключен"
+		;;
+	on)
+		need_root
+		shift
+		user=donoff host=mqtt.lab240.ru:8883 devs=
+		while [ $# -gt 0 ]; do
+			case "$1" in
+			--user) user=$2; shift 2 ;;
+			--host) host=$2; shift 2 ;;
+			*) devs="$devs $1"; shift ;;
+			esac
+		done
+		[ -n "$devs" ] || { echo "какие розетки: donoff-server bridge on tav1 lamp1 (или all)" >&2; exit 2; }
+		ask_pw "пароль $user на $host: "
+		tmp=$BRIDGE.tmp
+		{
+			echo "# donoff-server bridge on$devs (\"donoff-server bridge off\" removes it)"
+			echo "connection lab240"
+			echo "address $host"
+			case "$host" in
+			*:1883) ;;
+			*) echo "bridge_cafile /etc/ssl/certs/ca-certificates.crt" ;;
+			esac
+			echo "remote_username $user"
+			echo "remote_password $PW"
+			echo "remote_clientid donoff-bridge-$(hostname)-$(rand 4)"
+			echo "try_private true"
+			echo "cleansession true"
+			echo "restart_timeout 5 60"
+			for d in $devs; do
+				if [ "$d" = all ]; then echo "topic /donoff/# both 0"; else echo "topic /donoff/$d/# both 0"; fi
+			done
+		} > $tmp
+		chown root:mosquitto $tmp; chmod 640 $tmp; mv $tmp $BRIDGE
+		reload_mosquitto restart
+		echo "мост на $host включён:$devs"
+		;;
+	*) usage; exit 2 ;;
+	esac
+}
+
+cmd_influx_setup() {
+	need_root
+	if [ -s $CONF/influx.creds ]; then
+		echo "InfluxDB уже настроена ($CONF/influx.creds)"
+		return 0
+	fi
+	i=0
+	until curl -sf $INFLUX/health >/dev/null; do
+		i=$((i + 1))
+		[ $i -lt 90 ] || { echo "InfluxDB не отвечает на $INFLUX" >&2; return 1; }
+		sleep 1
+	done
+	if ! curl -sf $INFLUX/api/v2/setup | grep -q '"allowed": *true'; then
+		echo "InfluxDB уже настроена кем-то ещё: положите url=, org=, bucket=, token= в $CONF/influx.creds" >&2
+		return 1
+	fi
+	token=$(rand 48) apw=$(rand 16)
+	curl -sf -o /dev/null -X POST -H 'Content-Type: application/json' $INFLUX/api/v2/setup \
+		-d "{\"username\":\"admin\",\"password\":\"$apw\",\"org\":\"donoff\",\"bucket\":\"donoff\",\"token\":\"$token\"}"
+	umask 027
+	printf 'url=%s\norg=donoff\nbucket=donoff\ntoken=%s\n' $INFLUX "$token" > $CONF/influx.creds
+	chown root:donoff $CONF/influx.creds
+	umask 077
+	printf 'http://%s:%s\nuser admin\npassword %s\n' "$(hostname)" $IPORT "$apw" > $CONF/influx-admin
+	echo "InfluxDB настроена: org и bucket donoff; вход в веб admin, пароль в $CONF/influx-admin"
+	if [ -d /run/systemd/system ]; then systemctl try-restart donoff-panel.service; fi
+}
+
+cmd_show() {
+	for s in mosquitto influxdb donoff-panel avahi-daemon; do
+		printf '%-14s %s\n' $s "$(systemctl is-active $s 2>/dev/null || true)"
+	done
+	ips=$(hostname -I 2>/dev/null | tr ' ' '\n' | grep -v ':' | grep . || true)
+	echo "панель:"
+	for ip in $ips; do echo "  http://$ip:8090"; done
+	# the name avahi really took (napic-2.local when napic.local is taken)
+	fq=$(busctl call org.freedesktop.Avahi / org.freedesktop.Avahi.Server GetHostNameFqdn 2>/dev/null | sed -n 's/^s "\(.*\)"$/\1/p')
+	echo "  http://${fq:-$(hostname).local}:8090"
+	if [ -r $PASSWD ]; then
+		echo "пользователи брокера: $(cut -d: -f1 $PASSWD | tr '\n' ' ')"
+	fi
+	if [ -r $CONF/mqtt.creds ]; then
+		echo "панель подключается как $(panel_user), топики /$(panel_user)/<розетка>/..."
+	elif [ "$(id -u)" = 0 ]; then
+		echo "панель: нет пароля (donoff-server passwd)"
+	fi
+	if [ -s $CONF/influx.creds ]; then
+		echo "история: InfluxDB на порту $IPORT, org/bucket donoff (вход: $CONF/influx-admin)"
+	else
+		echo "история: не настроена (donoff-server influx-setup)"
+	fi
+	cmd_bridge
+}
+
+case "$1" in
+show | "") cmd_show ;;
+passwd) shift; cmd_passwd "$@" ;;
+deluser) shift; cmd_deluser "$@" ;;
+bridge) shift; cmd_bridge "$@" ;;
+influx-setup) cmd_influx_setup ;;
+-h | --help | help) usage ;;
+*) usage; exit 2 ;;
+esac

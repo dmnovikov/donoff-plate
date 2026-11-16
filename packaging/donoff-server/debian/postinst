@@ -1,0 +1,64 @@
+#!/bin/sh
+#
+# donoff-server postinst: the users, the broker passwords, the InfluxDB setup, the services.
+#
+set -e
+. /usr/share/debconf/confmodule
+
+CONF=/etc/donoff-server
+PASSWD=/etc/mosquitto/donoff.passwd
+
+case "$1" in
+configure)
+	getent group donoff >/dev/null || addgroup --system --quiet donoff
+	getent passwd donoff >/dev/null || adduser --system --quiet --ingroup donoff \
+		--home /var/lib/donoff-panel --no-create-home --shell /usr/sbin/nologin donoff
+	install -d -m 750 -o root -g donoff $CONF
+	[ -f $PASSWD ] || install -m 640 -o root -g mosquitto /dev/null $PASSWD
+
+	# the sockets' user; the panel connects as it too (the topics are /<user>/<device>/...).
+	# The password is kept in mqtt.creds for the panel, not in debconf.
+	db_get donoff-server/mqtt_user; u=${RET:-donoff}
+	db_get donoff-server/mqtt_password; p=$RET
+	db_set donoff-server/mqtt_password ""
+	if [ -n "$p" ]; then
+		printf '%s\n' "$p" | donoff-server passwd "$u" >/dev/null
+	elif ! grep -q "^$u:" $PASSWD; then
+		echo "donoff-server: у пользователя $u нет пароля, розетки и панель не подключатся: donoff-server passwd $u"
+	fi
+
+	# a broker set up by hand before the package (the local donoff of 2026-11) has the same listener
+	for f in /etc/mosquitto/conf.d/*.conf; do
+		[ -f "$f" ] && [ "$f" != /etc/mosquitto/conf.d/donoff-server.conf ] || continue
+		if grep -qE '^[[:space:]]*listener[[:space:]]+1883' "$f"; then
+			echo "donoff-server: в $f тоже listener 1883, mosquitto не запустится; уберите его оттуда"
+		fi
+	done
+
+	# 8086 taken by something else (EliCont lic_host on some NAPI): InfluxDB on the next free port
+	pc=/etc/systemd/system/influxdb.service.d/donoff-port.conf
+	if [ ! -f $pc ] && ss -Hltnp 'sport = :8086' 2>/dev/null | grep -v '"influxd"' | grep -q .; then
+		for port in $(seq 8087 8099); do
+			ss -Hltn "sport = :$port" | grep -q . || break
+		done
+		who=$(ss -Hltnp 'sport = :8086' | sed -n 's/.*users:(("\([^"]*\)".*/\1/p' | head -1)
+		mkdir -p ${pc%/*}
+		printf '# donoff-server: 8086 is taken here (%s)\n[Service]\nEnvironment=INFLUXD_HTTP_BIND_ADDRESS=:%s\n' "$who" $port > $pc
+		echo "donoff-server: порт 8086 занят ($who), InfluxDB будет на $port"
+	fi
+
+	systemctl enable donoff-panel.service >/dev/null 2>&1 || true
+	if [ -d /run/systemd/system ]; then
+		systemctl daemon-reload || true
+		systemctl restart influxdb.service || true
+		systemctl restart mosquitto.service || true
+		systemctl reload-or-restart avahi-daemon.service || true
+		donoff-server influx-setup || true
+		systemctl restart donoff-panel.service || true
+		donoff-server show || true
+	fi
+	;;
+esac
+
+db_stop
+exit 0

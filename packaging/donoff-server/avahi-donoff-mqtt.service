@@ -1,0 +1,16 @@
+<?xml version="1.0" standalone="no"?>
+<!DOCTYPE service-group SYSTEM "avahi-service.dtd">
+<!-- donoff2 sockets look for _mqtt._tcp with donoff=1 and take this broker first -->
+<service-group>
+  <name replace-wildcards="yes">donoff broker on %h</name>
+  <service>
+    <type>_mqtt._tcp</type>
+    <port>1883</port>
+    <txt-record>donoff=1</txt-record>
+  </service>
+  <service>
+    <type>_http._tcp</type>
+    <port>8090</port>
+    <txt-record>donoff=panel</txt-record>
+  </service>
+</service-group>

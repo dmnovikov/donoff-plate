@@ -1,0 +1,14 @@
+Template: donoff-server/mqtt_user
+Type: string
+Default: donoff
+Description: Broker user of the sockets:
+ The donoff sockets connect to the broker with this user and password (the
+ ones set in the sockets; the same as on mqtt.lab240.ru for the sockets that
+ work there now).
+
+Template: donoff-server/mqtt_password
+Type: password
+Description: Broker password of this user:
+ Leave it empty to keep the current password (or to set it later with
+ "donoff-server passwd"). The sockets are refused until the user has a
+ password.

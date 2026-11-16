@@ -1,0 +1,3 @@
+# Flags of donoff-panel (donoff-panel -h); "systemctl restart donoff-panel" after a change.
+# --trusted: the networks that open the page and send commands without the token.
+PANEL_ARGS="--listen :8090 --poll 30s --trusted 192.168.0.0/16,10.0.0.0/8,172.16.0.0/12"
