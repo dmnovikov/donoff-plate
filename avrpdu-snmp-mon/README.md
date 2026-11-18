@@ -1,4 +1,4 @@
-# avrpdu-snmp-mon (rpcm-view)
+# donoff-pdu-view
 
 Страница для АВР и управляемых PDU по SNMP: вводы АВР, розетки, маленькие графики на плитках,
 полные графики по клику, история в InfluxDB 2. Один статический бинарник, работает на плате NAPI
@@ -25,13 +25,12 @@
 ## Запуск
 
 ```sh
-rpcm-view -rpcm 192.168.0.78 -community public -listen :8095 \
-  -influx-token-file /root/rpcm.token -control 1
+donoff-pdu-view -host 192.168.0.78 -community public -listen :8095 -control 1
 ```
 
 | Флаг | По умолчанию | Что |
 |---|---|---|
-| `-rpcm` | 192.168.0.78 | адрес устройства, `host` или `host:port` (порт SNMP 161) |
+| `-host` | (нужен) | адрес устройства, `host` или `host:port` (порт SNMP 161); старое имя `-rpcm` |
 | `-community` | public | community SNMP v2c |
 | `-profile` | auto | id профиля или `auto`: по sysObjectID устройства |
 | `-profiles` | | папка с дополнительными профилями `*.yaml` (тот же id заменяет встроенный) |
@@ -41,13 +40,17 @@ rpcm-view -rpcm 192.168.0.78 -community public -listen :8095 \
 | `-control` | | розетки, которыми можно управлять: `1` или `1,3` |
 | `-min-gap` | 10s | наименьший промежуток между переключениями одной розетки |
 | `-max-hour` | 20 | больше всего переключений одной розетки за час |
-| `-name` | rpcm1 | имя устройства в InfluxDB (тег `dev`) |
+| `-name` | pdu1 | имя устройства в InfluxDB (тег `dev`) |
 | `-influx-url` | http://127.0.0.1:8086 | InfluxDB 2 |
-| `-influx-org`, `-influx-bucket` | nnz, rpcm | организация и бакет |
-| `-influx-token-file` | /root/rpcm.token | файл с токеном (только токен или `token=...`) |
+| `-influx-org`, `-influx-bucket` | nnz, pdu | организация и бакет |
+| `-influx-token-file` | /etc/donoff-pdu-view/influx.token | файл с токеном (только токен или `token=...`) |
 
 Память: сама программа около 9 МБ, `GOMEMLIMIT` 24 МБ. Графики берутся одним запросом за раз и
 кэшируются, на линию не больше 400 точек.
+
+Токен InfluxDB кладётся в файл (только root): только токен или строка `token=...`. В
+репозитории токенов нет. В InfluxDB измерения называются `rpcm_ats`, `rpcm_input`, `rpcm_outlet`
+(так с первой версии, чтобы история не терялась), устройство различается тегом `dev`.
 
 ## API
 
@@ -124,11 +127,11 @@ outlets:
 Новая модель:
 1. Взять MIB устройства и прочитать нужные OID: `snmpget -v2c -c public <адрес> <oid>`.
 2. Написать профиль, положить в папку `-profiles` (или в `profiles/` и пересобрать).
-3. `rpcm-view -profiles <папка> -list-profiles`, затем запустить с `-profile <id>` или `auto`.
+3. `donoff-pdu-view -profiles <папка> -list-profiles`, затем запустить с `-profile <id>` или `auto`.
 
 ## Сборка
 
 ```sh
-CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -trimpath -ldflags "-s -w" -o dist/rpcm-view-arm64 .
+CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -trimpath -ldflags "-s -w" -o dist/donoff-pdu-view-arm64 .
 go test ./...
 ```

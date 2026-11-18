@@ -1,4 +1,4 @@
-// rpcm-view: a read-only page for an RCNTEC RPCM (an ATS with two inputs and a PDU with outlets).
+// donoff-pdu-view: a page for an ATS/PDU by SNMP (the model by a profile: RCNTEC RPCM built in).
 // It polls the RPCM by SNMP GET (never SET), shows the inputs and the outlets as tiles, and keeps
 // a small history in InfluxDB 2 for the charts (no InfluxDB: tiles only).
 package main
@@ -24,15 +24,16 @@ var webFS embed.FS
 
 func main() {
 	var (
-		host      = flag.String("rpcm", "192.168.0.78", "RPCM address (host or host:port, SNMP port 161 by default)")
+		host      = flag.String("host", "", "the device address, host or host:port (SNMP port 161 by default)")
+		hostOld   = flag.String("rpcm", "", "the same as -host (the old name)")
 		community = flag.String("community", "public", "SNMP v2c community to read with")
 		listen    = flag.String("listen", ":8095", "address of the page")
-		name      = flag.String("name", "rpcm1", "the device name in InfluxDB (tag dev)")
+		name      = flag.String("name", "pdu1", "the device name in InfluxDB (tag dev)")
 		mainIn    = flag.Int("main", 1, "the main input of the ATS (1 or 2)")
 		iURL      = flag.String("influx-url", "http://127.0.0.1:8086", "InfluxDB 2 URL")
 		iOrg      = flag.String("influx-org", "nnz", "InfluxDB organization")
-		iBucket   = flag.String("influx-bucket", "rpcm", "InfluxDB bucket")
-		iToken    = flag.String("influx-token-file", "/root/rpcm.token", "file with the InfluxDB token (no file: no history)")
+		iBucket   = flag.String("influx-bucket", "pdu", "InfluxDB bucket")
+		iToken    = flag.String("influx-token-file", "/etc/donoff-pdu-view/influx.token", "file with the InfluxDB token (no file: no history)")
 		profID    = flag.String("profile", "auto", "the model profile id, or auto (by sysObjectID)")
 		profDir   = flag.String("profiles", "", "a folder with more profiles (*.yaml); the same id replaces a built-in one")
 		listProf  = flag.Bool("list-profiles", false, "print the profiles and exit")
@@ -43,8 +44,11 @@ func main() {
 	)
 	flag.Parse()
 	if *showVer {
-		fmt.Println("rpcm-view", version)
+		fmt.Println("donoff-pdu-view", version)
 		return
+	}
+	if *host == "" {
+		*host = *hostOld
 	}
 	debug.SetMemoryLimit(24 << 20) // a small board: collect early
 
@@ -58,6 +62,9 @@ func main() {
 			fmt.Printf("%-16s %s %s: %s (sysObjectID %s)\n", pr.ID, pr.Vendor, pr.Model, pr.Title, strings.Join(pr.Match, ", "))
 		}
 		return
+	}
+	if *host == "" {
+		log.Fatal("give the device address: -host 192.168.0.78")
 	}
 	var prof *Profile
 	if *profID != "auto" {
@@ -125,7 +132,7 @@ func main() {
 		reply(w, 200, h)
 	})
 	srv := &http.Server{Addr: *listen, Handler: mux, ReadHeaderTimeout: 10 * time.Second}
-	log.Printf("rpcm-view %s: RPCM %s, page on %s, history %v, control %q (gap %s, %d an hour)", version, *host, *listen, ix != nil, *control, *minGap, *maxHour)
+	log.Printf("donoff-pdu-view %s: device %s, page on %s, history %v, control %q (gap %s, %d an hour)", version, *host, *listen, ix != nil, *control, *minGap, *maxHour)
 	log.Fatal(srv.ListenAndServe())
 }
 
