@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>АВР RPCM: графики</title>
+<title>Графики</title>
 <style>
 :root {
   --bg: #f4f5f8; --card: #ffffff; --text: #1d2330; --muted: #687187; --line: #e1e4ea; --soft: #f0f2f6;
@@ -23,11 +23,11 @@
   --t1: #3987e5; --t2: #d95926; --relay: #9085e9; --grid: #262c37;
 }
 * { box-sizing: border-box; }
-body { margin: 0; background: var(--bg); color: var(--text); font: 14px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+body { margin: 0; min-height: 100vh; display: flex; flex-direction: column; background: var(--bg); color: var(--text); font: 14px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
 header { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 16px; padding: 12px 20px; background: var(--card); border-bottom: 1px solid var(--line); position: sticky; top: 0; z-index: 3; }
 header h1 { font-size: 18px; margin: 0; display: flex; align-items: center; gap: 8px; }
 header .meta { color: var(--muted); font-size: 13px; }
-main { max-width: 1400px; margin: 0 auto; padding: 16px; }
+main { flex: 1 0 auto; width: 100%; max-width: 1400px; margin: 0 auto; padding: 16px; }
 .card { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px; min-width: 0; margin-bottom: 14px; }
 .card.stale { filter: grayscale(1); opacity: .7; }
 .top { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
@@ -83,12 +83,12 @@ h2.sec small { color: var(--muted); font-weight: 400; font-size: 12px; }
 .tip .tm { color: var(--muted); }
 .msg { color: var(--muted); padding: 20px 0; text-align: center; font-size: 13px; }
 .msg.err { color: var(--bad); }
-footer { color: var(--muted); font-size: 12px; text-align: center; padding: 0 0 20px; }
+footer { flex: none; color: var(--muted); font-size: 12px; text-align: center; padding: 10px 16px 12px; border-top: 1px solid var(--line); background: var(--card); }
 </style>
 </head>
 <body>
 <header>
-  <a href="/" style="color:var(--accent);text-decoration:none;font-size:15px">← АВР и розетки</a>
+  <a id="back" href="/" style="color:var(--accent);text-decoration:none;font-size:15px">← устройство</a>
   <h1 id="title">Графики</h1>
   <span class="seg" id="range"></span>
 </header>
@@ -97,9 +97,10 @@ footer { color: var(--muted); font-size: 12px; text-align: center; padding: 0 0 
 const $ = id => document.getElementById(id);
 const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 const RANGES = [['15m', '15 мин'], ['30m', '30 мин'], ['1h', '1 ч'], ['6h', '6 ч'], ['24h', '24 ч'], ['7d', '7 дн']];
-const q = new URLSearchParams(location.search), what = q.get('what') === 'outlet' ? 'outlet' : 'ats', n = q.get('n') || '';
+const q = new URLSearchParams(location.search), what = q.get('what') === 'outlet' ? 'outlet' : 'ats', n = q.get('n') || '', dev = q.get('dev') || '';
+document.getElementById('back').href = '/device.html?' + new URLSearchParams({ dev });
 let range = q.get('range') || '30m', hist = null, timer = 0;
-$('title').textContent = what === 'outlet' ? `Розетка ${n}` : 'АВР: вводы';
+$('title').textContent = (dev ? dev + ": " : "") + (what === "outlet" ? `выход ${n}` : "вводы АВР"); document.title = $("title").textContent;
 document.title = $('title').textContent + ' — графики';
 function segs() {
   $('range').innerHTML = RANGES.map(([k, t]) => `<button data-r="${k}"${k === range ? ' class="cur"' : ''}>${t}</button>`).join('');
@@ -110,7 +111,7 @@ async function load() {
   clearTimeout(timer);
   if (!document.hidden) {
     try {
-      const r = await fetch('/api/history?' + new URLSearchParams({ what, n, range }), { cache: 'no-store' });
+      const r = await fetch('/api/history?' + new URLSearchParams({ dev, what, n, range }), { cache: 'no-store' });
       const j = await r.json();
       if (!r.ok) throw new Error(j.error || r.statusText);
       hist = j; draw();
@@ -155,7 +156,7 @@ function draw() {
     if (!a.length && !w.length) { $('charts').innerHTML = '<div class="msg">данных пока нет</div>'; return; }
     $('charts').innerHTML = block('Ток, мА', a) + '<div class="chart" id="oa"></div>'
       + block('Мощность', w) + '<div class="chart" id="ow"></div>'
-      + block('Напряжение, В <small>на активном вводе: у розеток RPCM своего замера нет</small>', v) + '<div class="chart" id="ov"></div>'
+      + block('Напряжение, В <small>на активном вводе: своего замера на выходах нет</small>', v) + '<div class="chart" id="ov"></div>'
       + block('Частота, Гц <small>на активном вводе</small>', hz) + '<div class="chart" id="oh"></div>';
     chart($('oa'), a, { ...o, h: 200, unit: ' мА', dec: 0, minSpan: 20 });
     chart($('ow'), w, { ...o, h: 200, unit: '', dec: 1, minSpan: 5 });

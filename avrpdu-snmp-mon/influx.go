@@ -24,10 +24,12 @@ type Influx struct {
 	url, org, bucket, token, dev string
 	cli                          *http.Client
 
-	qmu   sync.Mutex // one query at a time: the board is small
 	cmu   sync.Mutex
 	cache map[string]cached
 }
+
+// one query at a time for all the devices: the board is small
+var influxQ sync.Mutex
 
 type cached struct {
 	at time.Time
@@ -95,12 +97,20 @@ func (x *Influx) run(p *poller) {
 			add("rpcm_ats", "", fields("ats.active", "active", float64(a.Active), "ats.priority", "priority", float64(a.Priority), "ats.ground", "ground", float64(a.Ground)))
 			for _, in := range s.Inputs {
 				add("rpcm_input", fmt.Sprintf(",n=%d", in.N), fields("input.v", "v", in.V, "input.hz", "hz", in.Hz, "input.ma", "ma", in.MA,
-					"input.w", "w", in.W, "input.kwh", "kwh", in.KWh, "input.present", "present", float64(in.Present)))
+					"input.w", "w", in.W, "input.var", "var", in.Var, "input.kwh", "kwh", in.KWh, "input.present", "present", float64(in.Present)))
 			}
 			if time.Since(s.OutAt) < 15*time.Second {
 				for _, o := range s.Outlets {
 					add("rpcm_outlet", fmt.Sprintf(",n=%d", o.N), fields("outlet.on", "on", float64(o.On), "outlet.ma", "ma", o.MA, "outlet.w", "w", o.W,
 						"outlet.va", "va", o.VA, "outlet.var", "var", o.Var, "outlet.kwh", "kwh", o.KWh))
+				}
+			}
+			// the sensors with a number (not a state) and a value
+			if time.Since(s.SensAt) < 15*time.Second && s.Profile != nil {
+				for _, x := range s.Sensors {
+					if x.Valid && s.Profile.Sensors[x.G].Value.Map == nil {
+						add("rpcm_sensor", fmt.Sprintf(",g=%d,n=%d,v=%d", x.G, x.N, x.V), "value="+f(x.Value))
+					}
 				}
 			}
 		}
@@ -171,7 +181,7 @@ func (x *Influx) history(what, n, rng string) (*History, error) {
 	var filter string
 	switch what {
 	case "spark":
-		filter = `(r._measurement == "rpcm_input" and r._field == "v") or (r._measurement == "rpcm_outlet" and r._field == "ma")`
+		filter = `(r._measurement == "rpcm_input" and r._field == "v") or (r._measurement == "rpcm_outlet" and r._field == "ma") or r._measurement == "rpcm_sensor"`
 	case "ats":
 		filter = `(r._measurement == "rpcm_input" and (r._field == "v" or r._field == "hz" or r._field == "w")) or (r._measurement == "rpcm_ats" and r._field == "active")`
 	case "outlet":
@@ -194,12 +204,12 @@ func (x *Influx) history(what, n, rng string) (*History, error) {
 	}
 	x.cmu.Unlock()
 
-	x.qmu.Lock()
-	defer x.qmu.Unlock()
+	influxQ.Lock()
+	defer influxQ.Unlock()
 	to := time.Now().UTC()
 	from := to.Add(-r.d)
 	flux := fmt.Sprintf(`from(bucket: %q) |> range(start: %s, stop: %s) |> filter(fn: (r) => r.dev == %q and (%s))
-  |> aggregateWindow(every: %s, fn: mean, createEmpty: false) |> keep(columns: ["_time", "_value", "_measurement", "_field", "n"])`,
+  |> aggregateWindow(every: %s, fn: mean, createEmpty: false) |> keep(columns: ["_time", "_value", "_measurement", "_field", "n", "g", "v"])`,
 		x.bucket, from.Format(time.RFC3339), to.Format(time.RFC3339), x.dev, filter, dur(r.step))
 	b, err := x.do("/api/v2/query", url.Values{}, "application/vnd.flux", "application/csv", flux)
 	if err != nil {
@@ -220,6 +230,7 @@ func (x *Influx) history(what, n, rng string) (*History, error) {
 		}
 		if len(rec) > 1 && rec[1] == "result" {
 			head = rec
+			idx = map[string]int{} // a table with other columns has its own header
 			for i, k := range head {
 				idx[k] = i
 			}
@@ -244,6 +255,13 @@ func (x *Influx) history(what, n, rng string) (*History, error) {
 			k = "ats." + rec[idx["_field"]]
 		case "rpcm_outlet":
 			k = "out" + rec[idx["n"]] + "." + rec[idx["_field"]]
+		case "rpcm_sensor":
+			if gi, ok := idx["g"]; ok && idx["v"] > 0 {
+				k = "s" + rec[gi] + "." + rec[idx["n"]] + "." + rec[idx["v"]]
+			}
+		}
+		if k == "" {
+			continue
 		}
 		if ser[k] == nil {
 			ser[k] = &Series{Key: k}

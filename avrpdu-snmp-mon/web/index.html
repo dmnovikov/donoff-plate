@@ -3,269 +3,122 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>АВР RPCM</title>
+<title>АВР и PDU</title>
 <style>
 :root {
   --bg: #f4f5f8; --card: #ffffff; --text: #1d2330; --muted: #687187; --line: #e1e4ea; --soft: #f0f2f6;
   --accent: #2563eb; --ok: #15803d; --bad: #c2410c; --warn: #a16207; --cool: #0284c7;
-  --t1: #2a78d6; --t2: #eb6834; --relay: #6250d6; --grid: #e9ecf1;
 }
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
     --bg: #12151b; --card: #1b2029; --text: #e3e7ee; --muted: #8b94a7; --line: #2b323e; --soft: #232a35;
     --accent: #6c9cff; --ok: #4ade80; --bad: #fb923c; --warn: #facc15; --cool: #38bdf8;
-    --t1: #3987e5; --t2: #d95926; --relay: #9085e9; --grid: #262c37;
   }
 }
 :root[data-theme="dark"] {
   --bg: #12151b; --card: #1b2029; --text: #e3e7ee; --muted: #8b94a7; --line: #2b323e; --soft: #232a35;
   --accent: #6c9cff; --ok: #4ade80; --bad: #fb923c; --warn: #facc15; --cool: #38bdf8;
-  --t1: #3987e5; --t2: #d95926; --relay: #9085e9; --grid: #262c37;
 }
 * { box-sizing: border-box; }
-body { margin: 0; background: var(--bg); color: var(--text); font: 14px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+body { margin: 0; min-height: 100vh; display: flex; flex-direction: column; background: var(--bg); color: var(--text); font: 14px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
 header { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 16px; padding: 12px 20px; background: var(--card); border-bottom: 1px solid var(--line); position: sticky; top: 0; z-index: 3; }
-header h1 { font-size: 18px; margin: 0; display: flex; align-items: center; gap: 8px; }
+header h1 { font-size: 18px; margin: 0; }
 header .meta { color: var(--muted); font-size: 13px; }
-main { max-width: 1400px; margin: 0 auto; padding: 16px; }
-.card { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px; min-width: 0; margin-bottom: 14px; }
-.card.stale { filter: grayscale(1); opacity: .7; }
-.top { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
-.top h2 { margin: 0; font-size: 16px; flex: 1; min-width: 0; }
+main { flex: 1 0 auto; width: 100%; max-width: 1400px; margin: 0 auto; padding: 16px; }
+.devs { display: grid; grid-template-columns: repeat(auto-fill, minmax(290px, 1fr)); gap: 12px; }
+.dev { display: block; color: inherit; text-decoration: none; background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px; min-width: 0; }
+.dev:hover { border-color: var(--accent); }
+.dev.stale { filter: grayscale(1); opacity: .7; }
+.h { display: flex; align-items: center; gap: 8px; }
+.h b { flex: 1; min-width: 0; font-size: 16px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.h .go { color: var(--accent); font-size: 22px; line-height: 1; }
 .dot { display: inline-block; width: 9px; height: 9px; border-radius: 50%; background: var(--muted); flex: none; }
-.dot.ok { background: var(--ok); } .dot.warn { background: var(--warn); } .dot.bad { background: var(--bad); }
-.pill { display: inline-flex; align-items: center; padding: 1px 10px; border-radius: 999px; font-size: 12px; font-weight: 700; border: 1.5px solid currentColor; white-space: nowrap; }
-.pill.on { color: var(--cool); } .pill.off { color: var(--muted); } .pill.act { color: var(--ok); } .pill.bad { color: var(--bad); }
-.inputs { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 12px; margin-top: 10px; }
-.inp { border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; background: var(--soft); }
-.inp.active { border-color: var(--ok); box-shadow: 0 0 0 1px var(--ok); background: var(--card); }
-.inp.fail { border-color: var(--bad); box-shadow: 0 0 0 1px var(--bad); }
-.inp h3 { margin: 0; font-size: 14px; display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
-.inp h3 small { color: var(--muted); font-weight: 400; }
-.big { font-size: 34px; font-weight: 650; font-variant-numeric: tabular-nums; margin: 4px 0 2px; }
-.big small { font-size: 16px; color: var(--muted); font-weight: 500; }
-.kv { display: grid; grid-template-columns: auto 1fr; gap: 1px 12px; font-size: 13px; margin-top: 6px; }
+.dot.ok { background: var(--ok); } .dot.bad { background: var(--bad); } .dot.warn { background: var(--warn); } .dot.off { background: var(--muted); }
+.legend { margin-left: auto; display: flex; flex-wrap: wrap; gap: 4px 12px; color: var(--muted); font-size: 12px; }
+.legend span { display: inline-flex; align-items: center; gap: 5px; }
+.kind { display: inline-block; padding: 0 7px; margin-right: 6px; border-radius: 5px; background: var(--soft); border: 1px solid var(--line); color: var(--text); font-size: 12px; font-weight: 600; }
+.model { color: var(--muted); font-size: 13px; margin-top: 2px; overflow-wrap: anywhere; }
+.kv { display: grid; grid-template-columns: auto 1fr; gap: 1px 12px; font-size: 13px; margin-top: 8px; }
 .kv > span:nth-child(odd) { color: var(--muted); }
 .kv > span { min-width: 0; overflow-wrap: anywhere; font-variant-numeric: tabular-nums; }
-.sum { display: flex; flex-wrap: wrap; gap: 6px 28px; margin-top: 12px; font-size: 13px; color: var(--muted); }
-.sum b { color: var(--text); font-size: 15px; font-variant-numeric: tabular-nums; }
-.bad-t { color: var(--bad); font-weight: 600; }
-h2.sec { font-size: 15px; margin: 4px 0 10px; display: flex; gap: 10px; align-items: baseline; flex-wrap: wrap; }
-h2.sec small { color: var(--muted); font-weight: 400; font-size: 12px; }
-.outs { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px; margin-bottom: 14px; }
-.out { display: block; color: inherit; background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 8px 10px; min-width: 0; }
-.out.ctl { border-color: var(--accent); }
-.sw { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin-top: 6px; }
-.btn.on { color: var(--cool); border-color: var(--cool); } .btn.off { color: var(--bad); border-color: var(--bad); }
-.btn:disabled { opacity: .45; cursor: default; }
-.out:hover { border-color: var(--muted); }
-.out.sel { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
-.out.offst { background: var(--soft); }
-.out.offst .w { color: var(--muted); }
-.out.alarm { border-color: var(--bad); }
-.out .h { display: flex; align-items: center; gap: 6px; }
-.out .h b { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; }
-.out .w { font-size: 22px; font-weight: 650; font-variant-numeric: tabular-nums; margin-top: 2px; }
-.out .w small { font-size: 13px; color: var(--muted); font-weight: 500; }
-.out .q { color: var(--muted); font-size: 12px; font-variant-numeric: tabular-nums; }
-.out .al { color: var(--bad); font-size: 12px; font-weight: 600; }
-.hb { display: block; margin-top: 8px; color: inherit; text-decoration: none; border-radius: 6px; }
-a.hb:hover .sl, .out:hover .sl { stroke-width: 2.2; }
-.spk { display: flex; align-items: center; gap: 6px; }
-.spk svg { display: block; flex: 1; min-width: 0; height: 38px; order: 0; }
-.spk .go { order: 1; flex: none; font-size: 22px; line-height: 1; color: var(--accent); padding: 0 2px 0 4px; }
-a.hb:hover .go { transform: translateX(2px); }
-.sl { stroke: var(--accent); stroke-width: 1.6; fill: none; vector-effect: non-scaling-stroke; stroke-linejoin: round; }
-.sa { fill: var(--accent); opacity: .1; }
-.out.offst .sl { stroke: var(--muted); } .out.offst .sa { fill: var(--muted); }
-.sc { font-size: 11px; color: var(--muted); display: flex; justify-content: space-between; gap: 8px; font-variant-numeric: tabular-nums; }
-.seg { display: inline-flex; flex-wrap: wrap; border: 1px solid var(--line); border-radius: 7px; overflow: hidden; }
-.seg button { border: 0; border-right: 1px solid var(--line); background: var(--soft); color: var(--text); font: inherit; font-size: 13px; padding: 4px 10px; cursor: pointer; }
-.seg button:last-child { border-right: 0; }
-.seg button.cur { background: var(--accent); color: #fff; }
-.btn { padding: 3px 10px; font: inherit; font-size: 13px; border-radius: 6px; border: 1px solid var(--line); background: var(--soft); color: var(--text); cursor: pointer; }
-.box h3 { font-size: 13px; margin: 10px 0 2px; font-weight: 600; display: flex; flex-wrap: wrap; gap: 4px 12px; }
-.box h3 small { color: var(--muted); font-weight: 400; }
-.legend { display: flex; flex-wrap: wrap; gap: 2px 16px; font-size: 12px; color: var(--muted); }
-.legend i, .tip i { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 5px; }
-.chart { position: relative; }
-.chart svg { display: block; width: 100%; overflow: visible; touch-action: pan-y; }
-.chart text { fill: var(--muted); font-size: 11px; font-variant-numeric: tabular-nums; }
-.chart .gl { stroke: var(--grid); stroke-width: 1; }
-.chart .xh { stroke: var(--muted); stroke-width: 1; stroke-dasharray: 3 3; }
-.tip { position: absolute; top: 4px; pointer-events: none; background: var(--card); border: 1px solid var(--line); border-radius: 6px; padding: 5px 8px; font-size: 12px; white-space: nowrap; box-shadow: 0 2px 8px rgba(0,0,0,.15); z-index: 2; }
-.tip .tm { color: var(--muted); }
-details#about > summary { cursor: pointer; font-weight: 600; font-size: 15px; }
-details#about[open] > summary { margin-bottom: 8px; }
-.desc { white-space: pre-line; margin: 0 0 10px; }
-.caps { display: flex; flex-wrap: wrap; gap: 4px 6px; margin-top: 6px; }
-.caps span { font-size: 12px; padding: 1px 8px; border-radius: 999px; background: var(--soft); border: 1px solid var(--line); }
+.ins { display: flex; gap: 8px; margin-top: 10px; flex-wrap: wrap; }
+.in { flex: 1; min-width: 90px; border: 1px solid var(--line); border-radius: 8px; padding: 4px 8px; background: var(--soft); font-size: 12px; color: var(--muted); }
+.in b { display: block; font-size: 18px; color: var(--text); font-variant-numeric: tabular-nums; }
+.in.act { border-color: var(--ok); box-shadow: 0 0 0 1px var(--ok); background: var(--card); }
+.in.fail b { color: var(--bad); }
+.pills { display: flex; flex-wrap: wrap; gap: 4px 6px; margin-top: 8px; }
+.pill { display: inline-flex; padding: 1px 10px; border-radius: 999px; font-size: 12px; font-weight: 700; border: 1.5px solid currentColor; white-space: nowrap; }
+.pill.act { color: var(--ok); } .pill.bad { color: var(--bad); } .pill.warn { color: var(--warn); } .pill.off { color: var(--muted); }
 .msg { color: var(--muted); padding: 20px 0; text-align: center; font-size: 13px; }
 .msg.err { color: var(--bad); }
-footer { color: var(--muted); font-size: 12px; text-align: center; padding: 0 0 20px; }
+footer { flex: none; color: var(--muted); font-size: 12px; text-align: center; padding: 10px 16px 12px; border-top: 1px solid var(--line); background: var(--card); }
 </style>
 </head>
 <body>
 <header>
-  <h1><span class="dot" id="link"></span><span id="title">АВР и розетки</span></h1>
+  <h1>АВР и PDU</h1>
   <span class="meta" id="meta">подключение…</span>
+  <span class="legend"><span><i class="dot ok"></i>норма</span><span><i class="dot warn"></i>авария устройства</span><span><i class="dot bad"></i>пропал ввод</span><span><i class="dot off"></i>не отвечает</span></span>
 </header>
 <main>
-  <div class="card" id="ats"><div class="msg">ожидание ответа RPCM…</div></div>
-  <h2 class="sec" id="outhead">Розетки <small id="outmeta"></small></h2>
-  <div class="outs" id="outs"></div>
-  <details class="card" id="about"><summary>Об устройстве</summary><div id="aboutbody"></div></details>
+  <div class="devs" id="devs"><div class="msg">загрузка…</div></div>
 </main>
 <footer id="foot"></footer>
 <script>
 const $ = id => document.getElementById(id);
 const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 const fx = (v, d) => Number(v).toFixed(d);
-let S = null, busy = false;
-// switching: only the outlets the program allows (-control), the program also keeps the pace
-$('outs').addEventListener('click', async e => {
-  const b = e.target.closest('button[data-sw]'); if (!b || busy) return;
-  const n = +b.dataset.sw, on = +b.dataset.on, o = S.outlets.find(x => x.n === n);
-  if (!confirm(`${on ? 'Включить' : 'Выключить'} розетку ${n} «${o ? o.name : ''}»?`)) return;
-  busy = true; render();
-  try {
-    const r = await fetch('/api/outlet', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ n, on }) });
-    const j = await r.json();
-    if (!r.ok) alert('Не выполнено: ' + (j.error || r.statusText));
-  } catch (err) { alert('Не выполнено: ' + err.message); }
-  busy = false; poll();
-});
-
 const fmtUp = s => { const d = Math.floor(s / 86400), h = Math.floor(s % 86400 / 3600), m = Math.floor(s % 3600 / 60); return (d ? `${d} д ` : '') + `${h} ч ${m} мин`; };
-const inOK = i => i.present === 1 && i.v > 0 && (!i.vmin || i.v >= i.vmin) && (!i.vmax || i.v <= i.vmax) && !i.inverted;
+const inV = i => i.present === 1 && i.v > 0 && (!i.vmin || i.v >= i.vmin) && (!i.vmax || i.v <= i.vmax); // the voltage is there and normal
+const inOK = i => i.present === 1 && i.v > 0 && (!i.vmin || i.v >= i.vmin) && (!i.vmax || i.v <= i.vmax) && !i.inverted && !(i.alarms || []).length;
 
-// ---------- the live state ----------
+function tile(s) {
+  const pr = s.profile, sy = s.system, H = pr ? pr.has : {};
+  const fresh = s.ok && (Date.now() - Date.parse(s.at)) < 10000;
+  const outAl = s.outlets.flatMap(o => o.alarms || []), inAl = s.inputs.flatMap(i => i.alarms || []);
+  const sAl = (s.sensors || []).filter(x => x.alarm).map(x => (x.name || 'датчик') + ': ' + (x.status || 'авария'));
+  const alarms = [...new Set([...(s.alarms || []), ...inAl, ...outAl, ...sAl])];
+  const a = s.ats, multi = H['ats.active'] && s.inputs.length > 1, onBackup = multi && a.active && a.active !== s.main;
+  const ins = H.ats ? `<div class="ins">${s.inputs.map(i => {
+    const act = multi ? a.active === i.n : inV(i); // one input: active while its voltage is there
+    return `<div class="in${act ? ' act' : ''}${inOK(i) ? '' : ' fail'}">ввод ${i.n}${act ? ' · активен' : ''}<b>${i.present || i.v > 0 ? fx(i.v, 0) : '—'} В</b></div>`;
+  }).join('')}</div>` : '';
+  const outs = s.outlets, ow = outs.reduce((x, o) => x + o.w, 0);
+  // the dot: grey no answer, orange an input is lost (or on the backup), yellow the device tells an alarm, green all fine
+  const inLost = H.ats && (onBackup || s.inputs.some(i => !inV(i)));
+  const [dc, dt] = !fresh ? ['off', 'не отвечает'] : inLost ? ['bad', 'пропал ввод'] : alarms.length ? ['warn', 'авария устройства'] : ['ok', 'норма'];
+  return `<a class="dev${fresh ? '' : ' stale'}" href="/device.html?${new URLSearchParams({ dev: s.id })}">
+    <div class="h"><span class="dot ${dc}" title="${dt}"></span><b title="${esc(sy.name || s.id)}">${esc(sy.name || s.id)}</b><span class="go">›</span></div>
+    <div class="model">${s.kind ? `<span class="kind">${esc(s.kind)}</span>` : ''}${pr ? esc(pr.vendor + ' ' + pr.model) : 'модель не определена'}${sy.model && pr && sy.model !== pr.model ? ' · ' + esc(sy.model) : ''}</div>
+    <div class="kv">
+      <span>адрес</span><span>${esc(s.host)}</span>
+      <span>работает</span><span>${sy.uptime_s ? fmtUp(sy.uptime_s) : '—'}</span>
+      ${sy.location ? `<span>место</span><span>${esc(sy.location)}</span>` : ''}
+      ${sy.firmware ? `<span>прошивка</span><span>${esc(sy.firmware)}</span>` : ''}
+      ${H.outlets ? `<span>${esc((pr.outlet_title || 'Розетки').toLowerCase())}</span><span>${outs.filter(o => o.on).length} из ${outs.length} вкл${H['outlet.w'] ? ' · ' + fx(ow, 0) + ' Вт' : ''}</span>` : ''}
+      ${(s.sensors || []).some(x => x.valid && !x.text && x.unit) ? `<span>датчики</span><span>${s.sensors.filter(x => x.valid && !x.text && x.unit).map(x => fx(x.value, 1) + ' ' + esc(x.unit)).join(' · ')}</span>` : ''}
+      <span>id</span><span>${esc(s.id)}</span>
+    </div>
+    ${ins}
+    <div class="pills">
+      ${multi && a.active ? `<span class="pill ${onBackup ? 'bad' : 'act'}">от ввода ${a.active}${onBackup ? ' (резерв)' : ''}</span>` : ''}
+      ${alarms.map(x => `<span class="pill warn">${esc(x)}</span>`).join('')}
+      ${fresh ? '' : `<span class="pill bad">${esc(s.error || 'не отвечает')}</span>`}
+    </div></a>`;
+}
+
 async function poll() {
   try {
-    const r = await fetch('/api/state', { cache: 'no-store' });
-    S = await r.json();
-    render();
-  } catch (e) { $('link').className = 'dot bad'; $('meta').textContent = 'нет связи со страницей: ' + e.message; }
-}
-
-const CAPS = { 'input.v': 'напряжение вводов', 'input.hz': 'частота вводов', 'input.ma': 'ток вводов', 'input.w': 'мощность вводов', 'input.kwh': 'энергия вводов',
-  'input.inverted': 'контроль фазы', 'ats.active': 'активный ввод', 'ats.priority': 'приоритетный ввод', 'ats.ground': 'контроль земли',
-  'outlet.on': 'состояние розеток', 'outlet.ma': 'ток розеток', 'outlet.w': 'мощность розеток', 'outlet.va': 'полная мощность', 'outlet.var': 'реактивная мощность',
-  'outlet.kwh': 'энергия розеток', 'switch': 'включение и выключение розеток', 'system.temp': 'температура' };
-let aboutKey = '';
-function renderAbout(s) {
-  const pr = s.profile, sy = s.system, H = pr ? pr.has : {};
-  const key = JSON.stringify([pr && pr.id, sy, s.inputs.length, s.outlets.length, s.outlets.filter(o => o.ctl).map(o => o.n)]);
-  if (key === aboutKey) return;   // the same: an open <details> stays as it is
-  aboutKey = key;
-  if (!pr) { $('aboutbody').innerHTML = `<div class="msg">модель не определена${sy.object_id ? ' (sysObjectID ' + esc(sy.object_id) + ')' : ''}</div>`; return; }
-  const ctl = s.outlets.filter(o => o.ctl).map(o => o.n);
-  $('aboutbody').innerHTML = `<p class="desc">${esc(pr.description || '')}</p>
-    <div class="kv">
-      <span>производитель, модель</span><span>${esc(pr.vendor)} ${esc(pr.model)}${sy.model ? ' · ' + esc(sy.model) : ''}</span>
-      ${sy.serial ? `<span>серийный номер</span><span>${esc(sy.serial)}</span>` : ''}
-      ${sy.firmware ? `<span>прошивка</span><span>${esc(sy.firmware)}</span>` : ''}
-      ${sy.name ? `<span>имя</span><span>${esc(sy.name)}</span>` : ''}
-      ${sy.location ? `<span>место</span><span>${esc(sy.location)}</span>` : ''}
-      <span>адрес</span><span>${esc(s.host)} · SNMP v2c</span>
-      ${sy.object_id ? `<span>sysObjectID</span><span>${esc(sy.object_id)}</span>` : ''}
-      <span>профиль</span><span>${esc(pr.id)}</span>
-      <span>вводов / розеток</span><span>${s.inputs.length} / ${s.outlets.length}</span>
-      <span>управление</span><span>${ctl.length ? 'разрешено только для розетки ' + ctl.join(', ') : 'выключено, только чтение'}</span>
-      ${(pr.links || []).map(l => `<span>ссылка</span><span><a href="${esc(l)}" target="_blank" rel="noopener">${esc(l)}</a></span>`).join('')}
-    </div>
-    <div class="caps">${Object.keys(CAPS).filter(k => H[k]).map(k => `<span>${CAPS[k]}</span>`).join('')}</div>`;
-}
-
-function render() {
-  const s = S, fresh = s.ok && (Date.now() - Date.parse(s.at)) < 10000, H = s.profile ? s.profile.has : {};
-  if (s.profile) { $('title').textContent = s.profile.title || (s.profile.vendor + ' ' + s.profile.model); document.title = $('title').textContent; }
-  renderAbout(s);
-  $('ats').hidden = !H.ats; $('outhead').hidden = $('outs').hidden = !H.outlets;
-  $('link').className = 'dot ' + (fresh ? 'ok' : 'bad');
-  const sy = s.system;
-  $('meta').innerHTML = esc([sy.model, sy.serial && 'с/н ' + sy.serial, sy.firmware && 'прошивка ' + sy.firmware,
-    sy.temp ? sy.temp + ' °C' : '', sy.uptime_s ? 'работает ' + fmtUp(sy.uptime_s) : '', s.host].filter(Boolean).join(' · '))
-    + (fresh ? '' : ` · <span class="bad-t">${esc(s.error || 'RPCM не отвечает')}</span>`);
-  const a = s.ats, other = s.main === 1 ? 2 : 1;
-  const role = n => n === s.main ? 'основной' : 'резервный';
-  const ins = s.inputs.map(i => {
-    const ok = inOK(i), act = a.active === i.n;
-    return `<div class="inp${act ? ' active' : ''}${ok ? '' : ' fail'}">
-      <h3>Ввод ${i.n} <small>${role(i.n)}${i.name ? ' · ' + esc(i.name) : ''}</small>
-        ${act ? '<span class="pill act">активен</span>' : '<span class="pill off">в резерве</span>'}
-        ${ok ? '' : '<span class="pill bad">не в норме</span>'}</h3>
-      <div class="big">${i.present ? fx(i.v, 0) : '—'}<small> В</small></div>
-      <div class="kv">
-        ${H['input.hz'] ? `<span>частота</span><span>${i.present ? fx(i.hz, 2) + ' Гц' : '<span class="bad-t">нет</span>'}</span>` : ''}
-        ${H['input.ma'] || H['input.w'] ? `<span>ток / мощность</span><span>${H['input.ma'] ? fx(i.ma / 1000, 2) + ' А' : '—'} · ${H['input.w'] ? fx(i.w, 0) + ' Вт' : '—'}</span>` : ''}
-        ${H['input.kwh'] ? `<span>энергия</span><span>${fx(i.kwh, 3)} кВт·ч</span>` : ''}
-        ${H['input.vmin'] || H['input.vmax'] ? `<span>допуск</span><span>${i.vmin || '?'}–${i.vmax || '?'} В</span>` : ''}
-        ${H['input.inverted'] ? `<span>фаза</span><span>${i.inverted ? '<span class="bad-t">перепутана</span>' : 'в норме'}</span>` : ''}
-      </div><a class="hb" href="/history.html?what=ats" title="графики вводов">${spark(`in${i.n}.v`, 'В', 0)}</a></div>`;
-  }).join('');
-  const tw = s.inputs.reduce((x, i) => x + i.w, 0), tk = s.inputs.reduce((x, i) => x + i.kwh, 0);
-  const onBackup = a.active && a.active !== s.main;
-  $('ats').className = 'card' + (fresh ? '' : ' stale');
-  $('ats').innerHTML = `<div class="top"><h2>АВР</h2>
-      ${a.active ? `<span class="pill ${onBackup ? 'bad' : 'act'}">работает от ввода ${a.active}${onBackup ? ' (резерв)' : ''}</span>` : ''}
-      ${!H['ats.ground'] ? '' : a.ground === 1 ? '<span class="pill on">земля в норме</span>' : '<span class="pill bad">нет земли</span>'}</div>
-    <div class="inputs">${ins}</div>
-    <div class="sum"><span>текущая мощность <b>${fx(tw, 0)} Вт</b></span><span>энергия всего <b>${fx(tk, 3)} кВт·ч</b></span>
-      ${H['ats.priority'] ? `<span>приоритетный ввод <b>${a.priority || '—'}</b></span>` : ''}${H['ats.failback'] ? `<span>возврат на приоритетный <b>${a.failback ? 'вкл' : 'выкл'}</b></span>` : ''}</div>`;
-
-  const outs = s.outlets, ctlN = outs.filter(o => o.ctl).map(o => o.n);
-  $('foot').textContent = ctlN.length ? `управление: только розетка ${ctlN.join(', ')} (с защитой от частых переключений); остальное только чтение по SNMP` : 'только чтение по SNMP: управление выключено';
-  $('outmeta').textContent = outs.length ? `${outs.filter(o => o.on).length} из ${outs.length} включены · ${fx(outs.reduce((x, o) => x + o.w, 0), 0)} Вт` : '';
-  $('outs').innerHTML = outs.map(o => {
-    const al = o.alarms || [];
-    const ctl = o.ctl ? `<div class="sw">${o.admin
-        ? `<button class="btn off" data-sw="${o.n}" data-on="0"${o.next_s > 0 || busy ? ' disabled' : ''}>выключить</button>`
-        : `<button class="btn on" data-sw="${o.n}" data-on="1"${o.next_s > 0 || busy ? ' disabled' : ''}>включить</button>`}
-        ${o.next_s > 0 ? `<span class="q">можно через ${Math.ceil(o.next_s)} с</span>` : ''}</div>` : '';
-    return `<div class="out${o.on ? '' : ' offst'}${al.length ? ' alarm' : ''}${o.ctl ? ' ctl' : ''}">
-      <div class="h"><b title="${esc(o.name)}">${o.n} · ${esc(o.name || 'выход ' + o.n)}</b><span class="pill ${o.on ? 'on' : 'off'}">${o.on ? 'ВКЛ' : 'ВЫКЛ'}</span></div>
-      <div class="w">${fx(o.w, 0)}<small> Вт</small></div>
-      <div class="q">${[H['outlet.ma'] && fx(o.ma, 0) + ' мА', H['outlet.kwh'] && fx(o.kwh, 3) + ' кВт·ч'].filter(Boolean).join(' · ')}</div>
-      ${o.admin !== o.on ? `<div class="al">задано ${o.admin ? 'вкл' : 'выкл'}</div>` : ''}
-      ${al.length ? `<div class="al">${al.join(', ')}</div>` : ''}
-      ${ctl}
-      <a class="hb" href="/history.html?what=outlet&n=${o.n}" title="графики розетки ${o.n}">${spark(`out${o.n}.ma`, 'мА', 0)}</a></div>`;
-  }).join('');
-}
-
-// ---------- the small charts: 24 h of the inputs' voltage and the outlets' current, one query a minute ----------
-let SP = null, spAt = 0, spBusy = false;
-async function loadSparks() {
-  if (spBusy || document.hidden || Date.now() - spAt < 60000) return;
-  spBusy = true;
-  try {
-    const r = await fetch('/api/history?what=spark', { cache: 'no-store' });
+    const r = await fetch('/api/devices', { cache: 'no-store' });
     const j = await r.json();
-    SP = r.ok ? j : { error: j.error || r.statusText, series: [] };
-  } catch (e) { SP = { error: e.message, series: [] }; }
-  spAt = Date.now(); spBusy = false;
-  if (S) render();
+    const ds = j.devices || [];
+    $('devs').innerHTML = ds.length ? ds.map(tile).join('') : '<div class="msg">устройств нет: добавьте их в конфиг</div>';
+    const up = ds.filter(s => s.ok).length;
+    $('meta').textContent = `${ds.length} устройств · ${up} отвечают`;
+    $('foot').textContent = `donoff-pdu-view ${j.version} · опрос по SNMP` + (j.history ? ' · история в InfluxDB' : ' · без истории');
+  } catch (e) { $('meta').textContent = 'нет связи со страницей: ' + e.message; }
 }
-const spSer = k => SP && (SP.series.find(s => s.key === k) || {}).pts;
-function spark(key, unit, dec) {
-  if (!SP) return '<div class="spk"></div><div class="sc"><span>загрузка…</span></div>';
-  if (SP.error) return `<div class="sc"><span>${esc(SP.error)}</span></div>`;
-  const pts = spSer(key);
-  if (!pts || pts.length < 2) return '<div class="spk"></div><div class="sc"><span>история копится…</span><span style="color:var(--accent)">графики ›</span></div>';
-  const v = pts.map(p => p[1]), t0 = pts[0][0], t1 = pts[pts.length - 1][0];
-  let lo = Math.min(...v), hi = Math.max(...v);
-  const minSpan = Math.max(Math.abs(hi + lo) / 2 * 0.05, unit === 'В' ? 5 : 2);
-  if (hi - lo < minSpan) { const m = (hi + lo) / 2; lo = Math.max(0, m - minSpan / 2); hi = lo + minSpan; }
-  const X = t => (t - t0) / Math.max(1, t1 - t0) * 200, Y = x => 36 - (x - lo) / (hi - lo) * 34;
-  const d = pts.map((p, i) => `${i ? 'L' : 'M'}${X(p[0]).toFixed(1)},${Y(p[1]).toFixed(1)}`).join('');
-  const hrs = Math.round((t1 - t0) / 3600);
-  return `<div class="spk"><span class="go">›</span><svg viewBox="0 0 200 38" preserveAspectRatio="none"><path class="sa" d="${d}L200,38L0,38Z"/><path class="sl" d="${d}"/></svg></div>
-    <div class="sc"><span>за ${hrs >= 1 ? hrs + ' ч' : Math.max(1, Math.round((t1 - t0) / 60)) + ' мин'} · <span style="color:var(--accent)">графики</span></span><span>${fx(Math.min(...v), dec)} … ${fx(Math.max(...v), dec)} ${unit}</span></div>`;
-}
-
-poll(); setInterval(() => { if (!document.hidden) poll(); }, 2000);
-loadSparks(); setInterval(loadSparks, 5000);
+poll(); setInterval(() => { if (!document.hidden) poll(); }, 3000);
 </script>
 </body>
 </html>

@@ -1,6 +1,7 @@
-// donoff-pdu-view: a page for an ATS/PDU by SNMP (the model by a profile: RCNTEC RPCM built in).
-// It polls the RPCM by SNMP GET (never SET), shows the inputs and the outlets as tiles, and keeps
-// a small history in InfluxDB 2 for the charts (no InfluxDB: tiles only).
+// donoff-pdu-view: a page for ATS and PDU devices by SNMP (each model by a profile: RCNTEC RPCM
+// and Elemy ATS-1204 built in). It polls each device by SNMP GET, shows the devices as tiles on the
+// main page and each one's inputs and outlets on its own page, and keeps a small history in
+// InfluxDB 2 for the charts (no InfluxDB: tiles only). One device by the flags, or many by -config.
 package main
 
 import (
@@ -12,18 +13,55 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"regexp"
 	"runtime/debug"
 	"strings"
 	"time"
+
+	"gopkg.in/yaml.v3"
 )
 
-var version = "0.1.0"
+var version = "0.2.0"
 
 //go:embed web
 var webFS embed.FS
 
+// Config: the file of -config.
+type Config struct {
+	Listen   string `yaml:"listen"`
+	Profiles string `yaml:"profiles"`
+	Influx   struct {
+		URL       string `yaml:"url"`
+		Org       string `yaml:"org"`
+		Bucket    string `yaml:"bucket"`
+		TokenFile string `yaml:"token_file"`
+	} `yaml:"influx"`
+	Devices []DevConf `yaml:"devices"`
+}
+
+type DevConf struct {
+	ID        string        `yaml:"id"`        // the name in the address and in InfluxDB (tag dev)
+	Host      string        `yaml:"host"`      // host or host:port
+	Community string        `yaml:"community"` // public by default
+	Profile   string        `yaml:"profile"`   // auto by default
+	Main      int           `yaml:"main"`      // the main input, 1 by default
+	Control   string        `yaml:"control"`   // the outlets the page may switch: "1" or "1,3"
+	MinGap    time.Duration `yaml:"min_gap"`   // 10s by default
+	MaxHour   int           `yaml:"max_hour"`  // 20 by default
+	Kind      string        `yaml:"kind"`      // the kind on the page instead of the profile's (ПДУ, АВР, ...)
+}
+
+type device struct {
+	conf DevConf
+	p    *poller
+	ix   *Influx
+}
+
+var idRe = regexp.MustCompile(`^[A-Za-z0-9_-]{1,32}$`)
+
 func main() {
 	var (
+		cfgFile   = flag.String("config", "", "a YAML file with the devices (see README); without it one device by the flags below")
 		host      = flag.String("host", "", "the device address, host or host:port (SNMP port 161 by default)")
 		hostOld   = flag.String("rpcm", "", "the same as -host (the old name)")
 		community = flag.String("community", "public", "SNMP v2c community to read with")
@@ -50,9 +88,37 @@ func main() {
 	if *host == "" {
 		*host = *hostOld
 	}
-	debug.SetMemoryLimit(24 << 20) // a small board: collect early
 
-	all, err := loadProfiles(*profDir)
+	var cfg Config
+	if *cfgFile != "" {
+		b, err := os.ReadFile(*cfgFile)
+		if err != nil {
+			log.Fatal(err)
+		}
+		if err := yaml.Unmarshal(b, &cfg); err != nil {
+			log.Fatalf("%s: %v", *cfgFile, err)
+		}
+	} else if *host != "" {
+		cfg.Devices = []DevConf{{ID: *name, Host: *host, Community: *community, Profile: *profID, Main: *mainIn,
+			Control: *control, MinGap: *minGap, MaxHour: *maxHour}}
+	}
+	// the flags fill what the file leaves out
+	def := func(v *string, d string) {
+		if *v == "" {
+			*v = d
+		}
+	}
+	def(&cfg.Listen, *listen)
+	def(&cfg.Profiles, *profDir)
+	def(&cfg.Influx.URL, *iURL)
+	def(&cfg.Influx.Org, *iOrg)
+	def(&cfg.Influx.Bucket, *iBucket)
+	def(&cfg.Influx.TokenFile, *iToken)
+	if os.Getenv("GOMEMLIMIT") == "" {
+		debug.SetMemoryLimit(int64(16+8*len(cfg.Devices)) << 20) // a small board: collect early
+	}
+
+	all, err := loadProfiles(cfg.Profiles)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -63,53 +129,106 @@ func main() {
 		}
 		return
 	}
-	if *host == "" {
-		log.Fatal("give the device address: -host 192.168.0.78")
+	if len(cfg.Devices) == 0 {
+		log.Fatal("no devices: give -config devices.yaml or -host 192.168.0.78")
 	}
-	var prof *Profile
-	if *profID != "auto" {
-		if prof = all[*profID]; prof == nil {
-			log.Fatalf("no profile %q (there are: %s)", *profID, profileIDs(all))
-		}
-	}
-	p := newPoller(*host, *community, *mainIn, prof, all)
-	g, err := newGuard(*control, *minGap, max(*maxHour, 1))
-	if err != nil {
-		log.Fatal(err)
-	}
-	p.guard = g
-	go p.run()
 
-	var ix *Influx
-	if b, err := os.ReadFile(*iToken); err != nil {
+	token := ""
+	if b, err := os.ReadFile(cfg.Influx.TokenFile); err != nil {
 		log.Printf("history off: %v", err)
 	} else {
-		tok := strings.TrimSpace(string(b))
-		tok = strings.TrimSpace(strings.TrimPrefix(tok, "token="))
-		ix = newInflux(*iURL, *iOrg, *iBucket, tok, *name)
-		go ix.run(p)
+		token = strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(string(b)), "token="))
+	}
+
+	devs := map[string]*device{}
+	var order []string
+	for _, c := range cfg.Devices {
+		if !idRe.MatchString(c.ID) || c.Host == "" {
+			log.Fatalf("device %q: id (letters, digits, - and _) and host are needed", c.ID)
+		}
+		if devs[c.ID] != nil {
+			log.Fatalf("device %q twice", c.ID)
+		}
+		def(&c.Community, "public")
+		def(&c.Profile, "auto")
+		if c.Main == 0 {
+			c.Main = 1
+		}
+		if c.MinGap == 0 {
+			c.MinGap = 10 * time.Second
+		}
+		if c.MaxHour == 0 {
+			c.MaxHour = 20
+		}
+		var prof *Profile
+		if c.Profile != "auto" {
+			if prof = all[c.Profile]; prof == nil {
+				log.Fatalf("device %s: no profile %q (there are: %s)", c.ID, c.Profile, profileIDs(all))
+			}
+		}
+		d := &device{conf: c, p: newPoller(c.ID, c.Host, c.Community, c.Main, prof, all)}
+		d.p.kind = c.Kind
+		if d.p.guard, err = newGuard(c.Control, c.MinGap, max(c.MaxHour, 1)); err != nil {
+			log.Fatalf("device %s: %v", c.ID, err)
+		}
+		go d.p.run()
+		if token != "" {
+			d.ix = newInflux(cfg.Influx.URL, cfg.Influx.Org, cfg.Influx.Bucket, token, c.ID)
+			go d.ix.run(d.p)
+		}
+		devs[c.ID] = d
+		order = append(order, c.ID)
+		log.Printf("device %s: %s, profile %s, control %q (gap %s, %d an hour)", c.ID, c.Host, c.Profile, c.Control, c.MinGap, c.MaxHour)
+	}
+	// the device of a request: ?dev=, or the only one
+	pick := func(w http.ResponseWriter, id string) *device {
+		if id == "" && len(order) == 1 {
+			id = order[0]
+		}
+		d := devs[id]
+		if d == nil {
+			reply(w, 404, map[string]string{"error": "нет устройства " + id})
+		}
+		return d
 	}
 
 	sub, _ := fs.Sub(webFS, "web")
 	mux := http.NewServeMux()
 	mux.Handle("GET /", http.FileServer(http.FS(sub)))
-	mux.HandleFunc("GET /api/state", func(w http.ResponseWriter, r *http.Request) {
-		reply(w, 200, p.snapshot())
+	// all the devices for the main page, in the order of the config
+	mux.HandleFunc("GET /api/devices", func(w http.ResponseWriter, r *http.Request) {
+		out := make([]State, 0, len(order))
+		for _, id := range order {
+			out = append(out, devs[id].p.snapshot())
+		}
+		reply(w, 200, map[string]any{"devices": out, "history": token != "", "version": version})
 	})
-	// POST /api/outlet {"n":1,"on":0}: JSON only, so that another site cannot send it from a browser
+	mux.HandleFunc("GET /api/state", func(w http.ResponseWriter, r *http.Request) {
+		if d := pick(w, r.URL.Query().Get("dev")); d != nil {
+			reply(w, 200, d.p.snapshot())
+		}
+	})
+	// POST /api/outlet {"dev":"rpcm1","n":1,"on":0}: JSON only, so that another site cannot send it from a browser
 	mux.HandleFunc("POST /api/outlet", func(w http.ResponseWriter, r *http.Request) {
 		if !strings.HasPrefix(r.Header.Get("Content-Type"), "application/json") {
 			reply(w, 415, map[string]string{"error": "нужен application/json"})
 			return
 		}
-		var q struct{ N, On *int }
+		var q struct {
+			Dev   string
+			N, On *int
+		}
 		if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1024)).Decode(&q); err != nil || q.N == nil || q.On == nil || (*q.On != 0 && *q.On != 1) {
-			reply(w, 400, map[string]string{"error": `нужно {"n": номер, "on": 0 или 1}`})
+			reply(w, 400, map[string]string{"error": `нужно {"dev": "устройство", "n": номер, "on": 0 или 1}`})
 			return
 		}
-		if err := p.switchOutlet(*q.N, *q.On, r.RemoteAddr); err != nil {
+		d := pick(w, q.Dev)
+		if d == nil {
+			return
+		}
+		if err := d.p.switchOutlet(*q.N, *q.On, r.RemoteAddr); err != nil {
 			code := 502
-			if !p.guard.allowed(*q.N) {
+			if !d.p.guard.allowed(*q.N) {
 				code = 403
 			} else if strings.HasPrefix(err.Error(), "слишком часто") {
 				code = 429
@@ -120,19 +239,23 @@ func main() {
 		reply(w, 200, map[string]any{"ok": true})
 	})
 	mux.HandleFunc("GET /api/history", func(w http.ResponseWriter, r *http.Request) {
-		if ix == nil {
+		d := pick(w, r.URL.Query().Get("dev"))
+		if d == nil {
+			return
+		}
+		if d.ix == nil {
 			reply(w, 503, map[string]string{"error": "история выключена: нет токена InfluxDB"})
 			return
 		}
-		h, err := ix.history(r.URL.Query().Get("what"), r.URL.Query().Get("n"), r.URL.Query().Get("range"))
+		h, err := d.ix.history(r.URL.Query().Get("what"), r.URL.Query().Get("n"), r.URL.Query().Get("range"))
 		if err != nil {
 			reply(w, 502, map[string]string{"error": err.Error()})
 			return
 		}
 		reply(w, 200, h)
 	})
-	srv := &http.Server{Addr: *listen, Handler: mux, ReadHeaderTimeout: 10 * time.Second}
-	log.Printf("donoff-pdu-view %s: device %s, page on %s, history %v, control %q (gap %s, %d an hour)", version, *host, *listen, ix != nil, *control, *minGap, *maxHour)
+	srv := &http.Server{Addr: cfg.Listen, Handler: mux, ReadHeaderTimeout: 10 * time.Second}
+	log.Printf("donoff-pdu-view %s: %d devices, page on %s, history %v", version, len(order), cfg.Listen, token != "")
 	log.Fatal(srv.ListenAndServe())
 }
 

@@ -11,7 +11,7 @@ func TestProfiles(t *testing.T) {
 	if p == nil || p.ID != "rcntec-rpcm" {
 		t.Fatalf("RPCM not matched: %v", p)
 	}
-	if matchProfile(all, ".1.3.6.1.4.1.46235.20") != nil || matchProfile(all, ".1.3.6.1.4.1.58833.1.1.1") != nil {
+	if matchProfile(all, ".1.3.6.1.4.1.46235.20") != nil || matchProfile(all, ".1.3.6.1.4.1.58833.1.3.1") != nil {
 		t.Fatal("a foreign sysObjectID matched")
 	}
 	for _, k := range []string{"ats", "input.v", "input.hz", "outlet.va", "switch"} {
@@ -24,5 +24,114 @@ func TestProfiles(t *testing.T) {
 	}
 	if p.Input.Hz.oid(2) != ".1.3.6.1.4.1.46235.2.3.2.1.5.2" || p.Input.Hz.Scale != 0.01 {
 		t.Errorf("hz %s %v", p.Input.Hz.oid(2), p.Input.Hz.Scale)
+	}
+}
+
+func TestElemy(t *testing.T) {
+	all, err := loadProfiles("")
+	if err != nil {
+		t.Fatal(err)
+	}
+	p := matchProfile(all, ".1.3.6.1.4.1.58833.1.2.2")
+	if p == nil || p.ID != "elemy-ats1204" {
+		t.Fatalf("Elemy not matched: %v", p)
+	}
+	if p.first() != 0 || all["rcntec-rpcm"].first() != 1 {
+		t.Errorf("first input: elemy %d, rpcm %d", p.first(), all["rcntec-rpcm"].first())
+	}
+	for _, k := range []string{"ats", "ats.active", "input.v", "input.hz", "input.vmin", "outlets", "outlet.ma"} {
+		if !p.Has[k] {
+			t.Errorf("Elemy has no %s", k)
+		}
+	}
+	if p.Has["switch"] || p.Has["input.w"] {
+		t.Error("Elemy: switch or input.w")
+	}
+	if a := p.Alarms[0]; !a.alarm(2) || a.alarm(0) {
+		t.Error("ok: 0 alarm")
+	}
+	if a := p.Outlets.Alarms[1]; !a.alarm(2) || a.alarm(1) {
+		t.Error("yes: 2 alarm")
+	}
+}
+
+func TestElemyIPDU(t *testing.T) {
+	all, err := loadProfiles("")
+	if err != nil {
+		t.Fatal(err)
+	}
+	p := matchProfile(all, ".1.3.6.1.4.1.58833.1.4.1")
+	if p == nil || p.ID != "elemy-ipdu" {
+		t.Fatalf("IPDU not matched: %v", p)
+	}
+	if p.ATS.Inputs != 1 || !p.Has["ats"] || p.Has["ats.active"] || !p.Has["input.var"] || !p.Has["sensors"] {
+		t.Errorf("IPDU has: %v", p.Has)
+	}
+	if len(p.Sensors) != 2 || p.Sensors[0].Values != 2 || p.Sensors[1].Values != 1 {
+		t.Fatalf("sensors %+v", p.Sensors)
+	}
+	g := p.Sensors[0]
+	if g.Value.oid2(1, 0) != ".1.3.6.1.4.1.58833.1.4.1.6.2.1.6.1.0" || g.Unit.Map[15] != "°C" || !g.Status.alarm(2) || g.Status.alarm(1) {
+		t.Errorf("sensor oid %s unit %q", g.Value.oid2(1, 0), g.Unit.Map[15])
+	}
+	if p.OutletItem != "группа" || p.ATSTitle != "Ввод питания" || all["rcntec-rpcm"].ATSTitle != "АВР" {
+		t.Errorf("titles %q %q", p.OutletItem, p.ATSTitle)
+	}
+}
+
+func TestRaritan(t *testing.T) {
+	all, err := loadProfiles("")
+	if err != nil {
+		t.Fatal(err)
+	}
+	p := matchProfile(all, ".1.3.6.1.4.1.13742.6")
+	if p == nil || p.ID != "raritan-px" {
+		t.Fatalf("Raritan not matched: %v", p)
+	}
+	if !p.Has["ats"] || p.Has["switch"] || !p.Has["outlet.va"] || !p.Has["sensors"] || p.Outlets.On.yes() != 7 {
+		t.Errorf("Raritan has: %v", p.Has)
+	}
+	g := p.Sensors[0]
+	if !g.Avail.ok() || !g.Digits.ok() || g.VStatus.alarm(4) || !g.VStatus.alarm(5) || g.Unit.Map[22] != "г/м³" {
+		t.Errorf("sensors %+v", g)
+	}
+}
+
+func TestExagate(t *testing.T) {
+	all, err := loadProfiles("")
+	if err != nil {
+		t.Fatal(err)
+	}
+	p := matchProfile(all, ".1.3.1.4.1.35483.1.1.1.1.4.0")
+	if p == nil || p.ID != "exagate-sysguard" {
+		t.Fatalf("Exagate not matched: %v", p)
+	}
+	if p.Has["ats"] || !p.Has["sensors"] || p.Has["switch"] || len(p.Sensors) != 4 {
+		t.Errorf("Exagate has: %v", p.Has)
+	}
+	g := p.Sensors[0]
+	if g.Count != 6 || g.List[4] != 48 || g.Unit.Type != "text" || !g.Div.ok() || len(g.NA) != 1 {
+		t.Errorf("sensors %+v", g)
+	}
+}
+
+func TestElemyCCU(t *testing.T) {
+	all, err := loadProfiles("")
+	if err != nil {
+		t.Fatal(err)
+	}
+	p := matchProfile(all, ".1.3.6.1.4.1.58833.1.1.1")
+	if p == nil || p.ID != "elemy-ccu" {
+		t.Fatalf("CCU not matched: %v", p)
+	}
+	if !p.Has["ats"] || !p.Has["sensors"] || p.Has["switch"] || len(p.Sensors) != 2 {
+		t.Errorf("CCU has: %v", p.Has)
+	}
+	g := p.Sensors[0]
+	if g.Values != 2 || g.Value.oid2(1, 5) != ".1.3.6.1.4.1.58833.1.1.1.4.2.1.5.1" || g.Units[1] != "%" || g.VSub[0] != 10 {
+		t.Errorf("sensors %+v", g)
+	}
+	if !g.VStatus.alarm(7) || g.VStatus.alarm(3) || g.VStatus.alarm(0) {
+		t.Error("alarm by in")
 	}
 }

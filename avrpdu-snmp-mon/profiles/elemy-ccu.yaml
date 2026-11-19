@@ -1,0 +1,75 @@
+# Elemy CCU-1001/1002: a rack control unit: dry inputs (doors, breakers), relay outputs (fan, heater,
+# the equipment power), temperature/humidity sensors, a mains voltage sensor and the rack climate.
+# ELEMY-CCU1001-MIB 2023-04 (enterprise 58833, elmCcu1001 = .1.1.1); the CCU-1002 gives the same tree.
+# AlarmState: 0 none, 2/3 cleared, 5 event, 6 warning, 7 alarm, 14/15 acknowledged warning/alarm.
+# Read only here: the overrides (Ovr) of the inputs and outputs are writable by SNMP, not done.
+id: elemy-ccu
+vendor: Elemy
+model: CCU
+title: Elemy CCU — контроллер шкафа
+kind: Шкаф управления
+description: |
+  Контроллер шкафа: сухие входы (двери, автоматы), релейные выходы (вентилятор, обогреватель,
+  питание оборудования), датчики температуры и влажности, контроль напряжения сети, климат шкафа
+  по порогам. Здесь по SNMP всё только читается.
+links:
+  - https://elemy.ru
+match: [.1.3.6.1.4.1.58833.1.1.1]
+
+alarms:
+  - {oid: .1.3.6.1.4.1.58833.1.1.1.5.34.0, in: [5, 6, 7, 14, 15], label: температура в шкафу вне нормы}
+  - {oid: .1.3.6.1.4.1.58833.1.1.1.5.35.0, in: [5, 6, 7, 14, 15], label: ошибка датчика климата}
+  - {oid: .1.3.6.1.4.1.58833.1.1.1.6.21.0, in: [5, 6, 7, 14, 15], label: температура оборудования вне нормы}
+  - {oid: .1.3.6.1.4.1.58833.1.1.1.6.22.0, in: [5, 6, 7, 14, 15], label: ошибка датчика оборудования}
+
+system:
+  firmware: {oid: .1.3.6.1.2.1.1.1.0, type: text}
+  name:     {oid: .1.3.6.1.2.1.1.5.0, type: text}
+  location: {oid: .1.3.6.1.2.1.1.6.0, type: text}
+  uptime:   {oid: .1.3.6.1.2.1.1.3.0, scale: 0.01}
+
+# the voltage sensors as the inputs
+ats:
+  title: Напряжение сети
+  inputs_oid: {oid: .1.3.6.1.4.1.58833.1.1.1.4.3.0}
+  first: 0
+
+input:
+  v:    {oid: ".1.3.6.1.4.1.58833.1.1.1.4.4.1.3.{n}", scale: 0.1}
+  vmin: {oid: ".1.3.6.1.4.1.58833.1.1.1.4.4.1.11.{n}", scale: 0.1}
+  vmax: {oid: ".1.3.6.1.4.1.58833.1.1.1.4.4.1.12.{n}", scale: 0.1}
+  alarms:
+    - {oid: ".1.3.6.1.4.1.58833.1.1.1.4.4.1.4.{n}", ok: 0, label: ошибка датчика напряжения}
+    - {oid: ".1.3.6.1.4.1.58833.1.1.1.4.4.1.14.{n}", in: [5, 6, 7, 14, 15], label: напряжение вне нормы}
+
+# the relay outputs
+outlets:
+  title: Релейные выходы
+  item: выход
+  count_oid: {oid: .1.3.6.1.4.1.58833.1.1.1.3.5.0}
+  first: 0
+  name: {oid: ".1.3.6.1.4.1.58833.1.1.1.3.6.1.2.{n}", type: text}
+  on:   {oid: ".1.3.6.1.4.1.58833.1.1.1.3.6.1.4.{n}"}
+
+sensors:
+  # temperature ({v} 4) and humidity ({v} 5); {w}: their threshold alarm state (columns 10 and 14)
+  - title: Температура и влажность
+    count_oid: {oid: .1.3.6.1.4.1.58833.1.1.1.4.1.0}
+    first: 0
+    values: 2
+    vfirst: 4
+    units: [°C, "%"]
+    vsub: [10, 14]
+    avail:   {oid: ".1.3.6.1.4.1.58833.1.1.1.4.2.1.3.{n}"}            # enabled: 1
+    name:    {oid: ".1.3.6.1.4.1.58833.1.1.1.4.2.1.2.{n}", type: text}
+    value:   {oid: ".1.3.6.1.4.1.58833.1.1.1.4.2.1.{v}.{n}", scale: 0.1}
+    status:  {oid: ".1.3.6.1.4.1.58833.1.1.1.4.2.1.6.{n}", ok: 0, map: {1: ошибка чтения, 2: нет ответа}}
+    vstatus: {oid: ".1.3.6.1.4.1.58833.1.1.1.4.2.1.{w}.{n}", in: [5, 6, 7, 14, 15], map: {5: событие, 6: предупреждение, 7: авария, 14: предупреждение (квитировано), 15: авария (квитировано)}}
+  # the dry inputs that are set up (the normal state 1 off or 2 on; 0: not used)
+  - title: Сухие контакты
+    count_oid: {oid: .1.3.6.1.4.1.58833.1.1.1.3.3.0}
+    first: 0
+    avail:  {oid: ".1.3.6.1.4.1.58833.1.1.1.3.4.1.6.{n}", in: [1, 2]}
+    name:   {oid: ".1.3.6.1.4.1.58833.1.1.1.3.4.1.2.{n}", type: text}
+    value:  {oid: ".1.3.6.1.4.1.58833.1.1.1.3.4.1.9.{n}", map: {0: выкл, 1: вкл}}
+    status: {oid: ".1.3.6.1.4.1.58833.1.1.1.3.4.1.11.{n}", in: [5, 6, 7, 14, 15], map: {5: событие, 6: предупреждение, 7: авария, 14: предупреждение (квитировано), 15: авария (квитировано)}}
