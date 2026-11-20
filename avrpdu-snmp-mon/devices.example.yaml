@@ -1,0 +1,47 @@
+# An example of the config: the devices of the lab VM (192.168.0.9). Copy it to
+# /etc/donoff-pdu-view/devices.yaml and fix it. profile: auto (or no profile) picks it by sysObjectID;
+# kind: overrides the equipment kind of the profile. The Influx token is in its own file, not here.
+listen: ":8095"
+influx:
+  url: http://127.0.0.1:8086
+  org: nnz
+  bucket: pdu
+  token_file: /etc/donoff-pdu-view/influx.token
+devices:
+  - id: elemy1
+    host: 192.168.0.96
+    community: public
+    profile: auto
+  - id: ipdu1
+    host: 192.168.0.93
+    community: public
+    profile: auto
+  - id: raritan1
+    host: 192.168.0.22
+    community: public
+  - id: exagate1
+    host: 192.168.0.177
+    community: public
+  - id: ccu1
+    host: 192.168.0.97
+    community: public
+  - id: rpcm1
+    host: 192.168.0.78
+    community: public
+  - id: raritan2
+    host: 192.168.0.21
+    community: public
+  - id: raritan3
+    host: 192.168.0.23
+    community: public
+    profile: raritan-px2
+  - id: raritan4
+    host: 192.168.0.25
+    community: public
+  - id: raritan5
+    host: 192.168.0.26
+    community: public
+    profile: raritan-px2
+  - id: ccu2
+    host: 192.168.0.91
+    community: public
