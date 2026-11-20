@@ -3,6 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<script>try { document.documentElement.dataset.theme = localStorage.getItem('pdu.theme') || 'dark'; } catch (e) { document.documentElement.dataset.theme = 'dark'; }</script>
 <title>Графики</title>
 <style>
 :root {
@@ -84,6 +85,15 @@ h2.sec small { color: var(--muted); font-weight: 400; font-size: 12px; }
 .msg { color: var(--muted); padding: 20px 0; text-align: center; font-size: 13px; }
 .msg.err { color: var(--bad); }
 footer { flex: none; color: var(--muted); font-size: 12px; text-align: center; padding: 10px 16px 12px; border-top: 1px solid var(--line); background: var(--card); }
+.ubar { margin-left: auto; display: inline-flex; align-items: center; gap: 8px; font-size: 13px; color: var(--muted); }
+.ubar #uname { display: inline-flex; align-items: center; gap: 8px; }
+.ubtn { padding: 2px 9px; font: inherit; font-size: 13px; line-height: 1.5; border: 1px solid var(--line); border-radius: 8px; background: var(--soft); color: var(--text); cursor: pointer; }
+.ubtn:hover { border-color: var(--muted); }
+.legend ~ .ubar { margin-left: 0; }
+.napi { display: inline-flex; align-items: center; color: var(--text); text-decoration: none; flex: none; }
+.napi svg { height: 26px; width: auto; display: block; }
+footer .by { margin-top: 2px; font-size: 11px; letter-spacing: .02em; }
+[data-role="view"] .admin-only { display: none !important; }
 </style>
 </head>
 <body>
@@ -93,6 +103,7 @@ footer { flex: none; color: var(--muted); font-size: 12px; text-align: center; p
   <span class="seg" id="range"></span>
 </header>
 <main><div class="card box" id="charts"><div class="msg">загрузка…</div></div></main>
+<footer></footer>
 <script>
 const $ = id => document.getElementById(id);
 const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
@@ -231,5 +242,6 @@ function chart(box, series, o) {
 
 load();
 </script>
+<script src="/common.js"></script>
 </body>
 </html>

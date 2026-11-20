@@ -3,6 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<script>try { document.documentElement.dataset.theme = localStorage.getItem('pdu.theme') || 'dark'; } catch (e) { document.documentElement.dataset.theme = 'dark'; }</script>
 <title>АВР и PDU</title>
 <style>
 :root {
@@ -34,6 +35,11 @@ main { flex: 1 0 auto; width: 100%; max-width: 1400px; margin: 0 auto; padding: 
 .h .go { color: var(--accent); font-size: 22px; line-height: 1; }
 .dot { display: inline-block; width: 9px; height: 9px; border-radius: 50%; background: var(--muted); flex: none; }
 .dot.ok { background: var(--ok); } .dot.bad { background: var(--bad); } .dot.warn { background: var(--warn); } .dot.off { background: var(--muted); }
+.flt { display: inline-flex; gap: 6px; flex: 1 1 320px; min-width: 0; max-width: 520px; }
+.flt select, .flt input { font: inherit; font-size: 13px; padding: 4px 8px; border: 1px solid var(--line); border-radius: 7px; background: var(--soft); color: var(--text); min-width: 0; }
+.flt select { flex: none; max-width: 45%; }
+.flt input { flex: 1; }
+.flt .on, .flt input:not(:placeholder-shown) { border-color: var(--accent); }
 .legend { margin-left: auto; display: flex; flex-wrap: wrap; gap: 4px 12px; color: var(--muted); font-size: 12px; }
 .legend span { display: inline-flex; align-items: center; gap: 5px; }
 .kind { display: inline-block; padding: 0 7px; margin-right: 6px; border-radius: 5px; background: var(--soft); border: 1px solid var(--line); color: var(--text); font-size: 12px; font-weight: 600; }
@@ -51,19 +57,82 @@ main { flex: 1 0 auto; width: 100%; max-width: 1400px; margin: 0 auto; padding: 
 .pill.act { color: var(--ok); } .pill.bad { color: var(--bad); } .pill.warn { color: var(--warn); } .pill.off { color: var(--muted); }
 .msg { color: var(--muted); padding: 20px 0; text-align: center; font-size: 13px; }
 .msg.err { color: var(--bad); }
+header { padding-bottom: 0; }
+.gear { padding: 2px 8px; font-size: 17px; line-height: 1.3; border: 1px solid var(--line); border-radius: 8px; background: var(--soft); color: var(--text); cursor: pointer; }
+.gear:hover { border-color: var(--muted); }
+.tabs { flex-basis: 100%; display: flex; gap: 2px; overflow-x: auto; margin-bottom: -1px; scrollbar-width: thin; }
+.tab { flex: none; display: inline-flex; align-items: center; gap: 6px; max-width: 220px; padding: 7px 14px; font: inherit; font-size: 13px; color: var(--muted); background: transparent; border: 1px solid transparent; border-bottom: none; border-radius: 8px 8px 0 0; cursor: pointer; }
+.tab:hover { color: var(--text); background: var(--soft); }
+.tab.on { color: var(--text); font-weight: 600; background: var(--bg); border-color: var(--line); }
+.tab .tn { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tab .n { font-size: 11px; color: var(--muted); font-weight: 400; font-variant-numeric: tabular-nums; }
+.tab .off { width: 7px; height: 7px; border-radius: 50%; background: var(--bad); flex: none; }
+.tab.add { font-size: 16px; padding: 4px 12px; }
+.tab.arch { margin-left: auto; }
+.tab.drop { outline: 2px dashed var(--accent); outline-offset: -3px; color: var(--text); }
+.group { margin-bottom: 22px; }
+.group > h2 { font-size: 15px; margin: 0 0 10px; display: flex; align-items: baseline; gap: 8px; }
+.group > h2 small { color: var(--muted); font-weight: 400; font-size: 13px; }
+.ebtn { flex: none; padding: 0 6px; font-size: 14px; line-height: 1.4; border: 1px solid transparent; border-radius: 6px; color: var(--muted); cursor: pointer; }
+.ebtn:hover { border-color: var(--line); color: var(--text); }
+.gtag { color: var(--muted); font-size: 12px; }
+.modal { position: fixed; inset: 0; z-index: 10; background: rgba(0,0,0,.35); display: flex; align-items: flex-start; justify-content: center; padding: 50px 12px; overflow-y: auto; }
+.modal[hidden] { display: none; }
+.modal .box { background: var(--card); border: 1px solid var(--line); border-radius: 12px; width: 100%; max-width: 480px; padding: 14px 16px; }
+.modal .bh { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 10px; }
+.modal h3 { margin: 0; font-size: 16px; min-width: 0; overflow-wrap: anywhere; }
+.modal h4 { margin: 10px 0 6px; font-size: 14px; color: var(--muted); font-weight: 600; }
+.modal .x { border: none; background: none; color: var(--muted); font-size: 22px; cursor: pointer; line-height: 1; }
+.modal .q { color: var(--muted); font-size: 12px; margin-top: 8px; }
+.btn { padding: 4px 10px; font: inherit; font-size: 13px; color: var(--text); background: var(--soft); border: 1px solid var(--line); border-radius: 7px; cursor: pointer; }
+.btn:hover { border-color: var(--muted); }
+.btn:disabled { opacity: .35; cursor: default; }
+.grow { display: flex; align-items: center; gap: 4px; padding: 6px 0; border-top: 1px solid var(--line); }
+.grow .gn { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.grow .gn small { color: var(--muted); margin-left: 6px; }
+.grow .btn { padding: 3px 8px; }
+.gchips { display: flex; flex-wrap: wrap; gap: 6px; }
+.gchip { padding: 5px 10px; font: inherit; font-size: 13px; color: var(--text); background: var(--card); border: 1px solid var(--line); border-radius: 14px; cursor: pointer; }
+.gchip.on { border-color: var(--accent); color: var(--accent); font-weight: 600; }
+.err { color: var(--bad); font-size: 12px; min-height: 1em; margin-top: 6px; }
 footer { flex: none; color: var(--muted); font-size: 12px; text-align: center; padding: 10px 16px 12px; border-top: 1px solid var(--line); background: var(--card); }
+.ubar { margin-left: auto; display: inline-flex; align-items: center; gap: 8px; font-size: 13px; color: var(--muted); }
+.ubar #uname { display: inline-flex; align-items: center; gap: 8px; }
+.ubtn { padding: 2px 9px; font: inherit; font-size: 13px; line-height: 1.5; border: 1px solid var(--line); border-radius: 8px; background: var(--soft); color: var(--text); cursor: pointer; }
+.ubtn:hover { border-color: var(--muted); }
+.legend ~ .ubar { margin-left: 0; }
+.napi { display: inline-flex; align-items: center; color: var(--text); text-decoration: none; flex: none; }
+.napi svg { height: 26px; width: auto; display: block; }
+footer .by { margin-top: 2px; font-size: 11px; letter-spacing: .02em; }
+[data-role="view"] .admin-only { display: none !important; }
 </style>
 </head>
 <body>
 <header>
   <h1>АВР и PDU</h1>
   <span class="meta" id="meta">подключение…</span>
+  <span class="flt"><select id="kind" title="тип устройства"><option value="">все типы</option></select><input type="search" id="q" placeholder="поиск: имя, адрес, модель…" title="ищет по имени, id, адресу, модели, производителю, месту, серийному номеру и группе; несколько слов — все должны быть"></span>
   <span class="legend"><span><i class="dot ok"></i>норма</span><span><i class="dot warn"></i>авария устройства</span><span><i class="dot bad"></i>пропал ввод</span><span><i class="dot off"></i>не отвечает</span></span>
+  <button class="gear admin-only" id="gear" title="настройки: группы">⚙</button>
+  <nav class="tabs" id="tabs"></nav>
 </header>
+<div class="modal" id="sett" hidden><div class="box">
+  <div class="bh"><h3>Настройки</h3><button class="x" data-s="close" title="закрыть">×</button></div>
+  <h4>Группы</h4>
+  <div id="sgroups"></div>
+  <div style="margin-top:8px"><button class="btn" data-s="add">+ Новая группа</button></div>
+  <div class="q">Порядок здесь — порядок вкладок. Удалённая группа: её устройства станут «без группы». Переложить устройство в группу — ✎ на плитке или перетащить плитку на вкладку.</div>
+</div></div>
+<div class="modal" id="ed" hidden><div class="box">
+  <div class="bh"><h3 id="edt"></h3><button class="x" data-e="close" title="закрыть">×</button></div>
+  <h4>Группа</h4>
+  <div class="gchips" id="edg"></div>
+  <div class="err" id="ede"></div>
+</div></div>
 <main>
-  <div class="devs" id="devs"><div class="msg">загрузка…</div></div>
+  <div id="devs"><div class="msg">загрузка…</div></div>
 </main>
-<footer id="foot"></footer>
+<footer><span id="foot"></span></footer>
 <script>
 const $ = id => document.getElementById(id);
 const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
@@ -74,7 +143,7 @@ const inOK = i => i.present === 1 && i.v > 0 && (!i.vmin || i.v >= i.vmin) && (!
 
 function tile(s) {
   const pr = s.profile, sy = s.system, H = pr ? pr.has : {};
-  const fresh = s.ok && (Date.now() - Date.parse(s.at)) < 10000;
+  const fresh = isFresh(s);
   const outAl = s.outlets.flatMap(o => o.alarms || []), inAl = s.inputs.flatMap(i => i.alarms || []);
   const sAl = (s.sensors || []).filter(x => x.alarm).map(x => (x.name || 'датчик') + ': ' + (x.status || 'авария'));
   const alarms = [...new Set([...(s.alarms || []), ...inAl, ...outAl, ...sAl])];
@@ -87,8 +156,8 @@ function tile(s) {
   // the dot: grey no answer, orange an input is lost (or on the backup), yellow the device tells an alarm, green all fine
   const inLost = H.ats && (onBackup || s.inputs.some(i => !inV(i)));
   const [dc, dt] = !fresh ? ['off', 'не отвечает'] : inLost ? ['bad', 'пропал ввод'] : alarms.length ? ['warn', 'авария устройства'] : ['ok', 'норма'];
-  return `<a class="dev${fresh ? '' : ' stale'}" href="/device.html?${new URLSearchParams({ dev: s.id })}">
-    <div class="h"><span class="dot ${dc}" title="${dt}"></span><b title="${esc(sy.name || s.id)}">${esc(sy.name || s.id)}</b><span class="go">›</span></div>
+  return `<a class="dev${fresh ? '' : ' stale'}" data-id="${esc(s.id)}" href="/device.html?${new URLSearchParams({ dev: s.id })}">
+    <div class="h"><span class="dot ${dc}" title="${dt}"></span><b title="${esc(sy.name || s.id)}">${esc(sy.name || s.id)}</b><span class="ebtn admin-only" data-edit="${esc(s.id)}" title="группа">✎</span><span class="go">›</span></div>
     <div class="model">${s.kind ? `<span class="kind">${esc(s.kind)}</span>` : ''}${pr ? esc(pr.vendor + ' ' + pr.model) : 'модель не определена'}${sy.model && pr && sy.model !== pr.model ? ' · ' + esc(sy.model) : ''}</div>
     <div class="kv">
       <span>адрес</span><span>${esc(s.host)}</span>
@@ -107,18 +176,201 @@ function tile(s) {
     </div></a>`;
 }
 
+const isFresh = s => s.ok && (Date.now() - Date.parse(s.at)) < 10000;
+const ARCH = 'Архив';
+let S = null, groups = {}, groupOrder = [], shownGroups = [], groupCount = () => 0, dragging = false, edDev = null;
+let tab = '*', pending = [];
+try { pending = JSON.parse(localStorage.getItem('pdu.pendingGroups') || '[]').filter(x => typeof x === 'string'); } catch (e) { pending = []; }
+const savePending = () => { try { localStorage.setItem('pdu.pendingGroups', JSON.stringify(pending)); } catch (e) {} };
+{
+  const m = location.hash.match(/^#g=(.*)$/);
+  if (m) tab = decodeURIComponent(m[1]);
+  else { try { tab = localStorage.getItem('pdu.tab') ?? '*'; } catch (e) {} }
+}
+function setTab(t, go = true) {
+  tab = t;
+  try { localStorage.setItem('pdu.tab', t); } catch (e) {}
+  const h = t === '*' ? '' : '#g=' + encodeURIComponent(t);
+  if (location.hash !== h) history.replaceState(null, '', h || location.pathname + location.search);
+  if (go) render();
+}
+async function api(path, method, body) {
+  const r = await fetch(path, { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+  const j = await r.json().catch(() => ({}));
+  if (r.status === 403 && !j.error) throw new Error('нет прав на изменение: войдите как admin');
+  if (!r.ok) throw new Error(j.error || r.statusText);
+  return j;
+}
+
+function render() {
+  if (!S || dragging) return;
+  const all = S.devices || [];
+  groups = S.groups || {}; groupOrder = S.group_order || [];
+  const oi = n => { const i = groupOrder.indexOf(n); return i < 0 ? 1e9 : i; };
+  const names = [...new Set(Object.values(groups))].filter(n => n !== ARCH).sort((x, y) => oi(x) - oi(y) || x.localeCompare(y, 'ru'));
+  pending = pending.filter(n => !names.includes(n) && n !== ARCH); savePending();
+  shownGroups = [...names, ...pending];
+  const by = new Map(names.map(n => [n, []])); by.set('', []); by.set(ARCH, []);
+  for (const d of all) by.get(groups[d.id] && by.has(groups[d.id]) ? groups[d.id] : '').push(d);
+  groupCount = n => by.get(n) ? by.get(n).length : 0;
+  const nArch = groupCount(ARCH), live = all.filter(d => groups[d.id] !== ARCH);
+  // the tabs: all (without the archive), every group, the devices without a group, the groups made here and still empty, the archive, "+"
+  const tabs = [['*', 'Все', live], ...names.map(n => [n, n, by.get(n)])];
+  if ((names.length || nArch) && groupCount('')) tabs.push(['', 'Без группы', by.get('')]);
+  for (const n of pending) tabs.push([n, n, []]);
+  tabs.push([ARCH, '🗄 ' + ARCH, by.get(ARCH)]);
+  if (all.length && !tabs.some(x => x[0] === tab)) setTab('*', false);
+  const th = tabs.map(([k, label, list]) => {
+    const off = k !== ARCH && list.some(d => !isFresh(d));
+    return `<button class="tab${k === tab ? ' on' : ''}${k === ARCH ? ' arch' : ''}" data-g="${esc(k)}" title="${esc(label)}"><span class="tn">${esc(label)}</span><span class="n">${list.length}</span>${off ? '<span class="off" title="есть устройства без связи"></span>' : ''}</button>`;
+  }).join('') + '<button class="tab add admin-only" data-g="+" title="новая группа">+</button>';
+  if ($('tabs').dataset.html !== th) { $('tabs').innerHTML = th; $('tabs').dataset.html = th; }
+  if (!$('sett').hidden) fillSettings();
+  if (!$('ed').hidden) fillEd();
+  // the filters: the kind and the free search (all the words, in any field); the tab counts stay whole
+  const kinds = [...new Set(all.map(d => d.kind).filter(Boolean))].sort((x, y) => x.localeCompare(y, 'ru'));
+  const kh = '<option value="">все типы</option>' + kinds.map(k => `<option value="${esc(k)}">${esc(k)}</option>`).join('');
+  const ks = $('kind');
+  if (ks.dataset.html !== kh) { const v = ks.value; ks.innerHTML = kh; ks.dataset.html = kh; ks.value = kinds.includes(v) ? v : ''; }
+  ks.classList.toggle('on', !!ks.value);
+  const words = $('q').value.trim().toLowerCase().split(/\s+/).filter(Boolean), kind = ks.value;
+  const hay = d => { const sy = d.system || {}, pr = d.profile || {}; return [d.id, d.host, d.kind, sy.name, sy.model, sy.serial, sy.location, sy.firmware, pr.vendor, pr.model, pr.title, groups[d.id]].join(' ').toLowerCase(); };
+  const filtering = !!(kind || words.length);
+  const pass = d => (!kind || d.kind === kind) && words.every(w => hay(d).includes(w));
+  const fby = new Map([...by].map(([n, l]) => [n, l.filter(pass)]));
+  // the tiles: on "Все" by groups with a heading (when there are groups), else the one group
+  const secs = (tab === '*' ? [...names, ''] : [tab]).filter(n => fby.has(n) && fby.get(n).length);
+  const heads = tab === '*' && names.length > 0;
+  let html = secs.map(n => `<section class="group">${heads ? `<h2>${esc(n || 'Без группы')} <small>${fby.get(n).length}</small></h2>` : ''}<div class="devs">${fby.get(n).map(tile).join('')}</div></section>`).join('');
+  if (!all.length) html = '<div class="msg">устройств нет: добавьте их в конфиг</div>';
+  else if (!secs.length && filtering && (tab === '*' ? [...names, ''] : [tab]).some(n => by.has(n) && by.get(n).length)) html = '<div class="msg">ничего не найдено по фильтру</div>';
+  else if (!secs.length) html = `<div class="msg">${tab === ARCH ? 'Архив пуст: сюда кладут старые устройства (✎ на плитке → «Архив», или перетащите плитку на эту вкладку). На «Все» они не показываются.' : 'В группе пока нет устройств: перетащите сюда плитку (с вкладки «Все») или нажмите ✎ на плитке и выберите эту группу.'}</div>`;
+  $('devs').innerHTML = html;
+  const up = live.filter(d => d.ok).length;
+  const shown = secs.reduce((x, n) => x + fby.get(n).length, 0);
+  $('meta').textContent = `${live.length} устройств · ${up} отвечают` + (nArch ? ` · в архиве ${nArch}` : '') + (filtering ? ` · найдено ${shown}` : '');
+  $('foot').textContent = `donoff-pdu-view ${S.version} · опрос по SNMP` + (S.history ? ' · история в InfluxDB' : ' · без истории');
+}
+
 async function poll() {
   try {
     const r = await fetch('/api/devices', { cache: 'no-store' });
-    const j = await r.json();
-    const ds = j.devices || [];
-    $('devs').innerHTML = ds.length ? ds.map(tile).join('') : '<div class="msg">устройств нет: добавьте их в конфиг</div>';
-    const up = ds.filter(s => s.ok).length;
-    $('meta').textContent = `${ds.length} устройств · ${up} отвечают`;
-    $('foot').textContent = `donoff-pdu-view ${j.version} · опрос по SNMP` + (j.history ? ' · история в InfluxDB' : ' · без истории');
+    S = await r.json();
+    render();
   } catch (e) { $('meta').textContent = 'нет связи со страницей: ' + e.message; }
 }
+
+$('q').addEventListener('input', render);
+$('kind').addEventListener('change', render);
+$('q').addEventListener('keydown', e => { if (e.key === 'Escape') { $('q').value = ''; render(); } });
+// the tabs: open one, "+" makes a group (empty until a device is put there: kept in this browser)
+$('tabs').addEventListener('click', e => {
+  const b = e.target.closest('.tab'); if (!b) return;
+  if (b.dataset.g !== '+') return setTab(b.dataset.g);
+  const n = newGroup(); if (n) setTab(n);
+});
+window.addEventListener('hashchange', () => { const m = location.hash.match(/^#g=(.*)$/); setTab(m ? decodeURIComponent(m[1]) : '*'); });
+function newGroup() {
+  const n = (prompt('Название новой группы (до 40 символов):') || '').trim().slice(0, 40);
+  if (!n) return null;
+  if (n === ARCH) { alert('«Архив» уже есть.'); return null; }
+  if (n === '*' || n === '+') { alert('Такое название занято.'); return null; }
+  if (!Object.values(groups).includes(n) && !pending.includes(n)) { pending.push(n); savePending(); }
+  return n;
+}
+async function setGroup(dev, g) { await api('/api/group', 'PUT', { dev, group: g }); await poll(); }
+
+// drag a tile onto a tab: it goes into that group
+$('devs').addEventListener('dragstart', e => {
+  const t = e.target.closest && e.target.closest('.dev'); if (!t) return;
+  e.dataTransfer.setData('text/x-dev', t.dataset.id); e.dataTransfer.effectAllowed = 'move'; dragging = true;
+});
+document.addEventListener('dragend', () => { if (dragging) { dragging = false; render(); } });
+const dropTab = e => { const b = e.target.closest && e.target.closest('.tab'); return b && b.dataset.g !== '*' && b.dataset.g !== '+' ? b : null; };
+$('tabs').addEventListener('dragover', e => {
+  const b = dropTab(e); if (!b || !e.dataTransfer.types.includes('text/x-dev')) return;
+  e.preventDefault(); e.dataTransfer.dropEffect = 'move';
+  $('tabs').querySelectorAll('.drop').forEach(x => x !== b && x.classList.remove('drop')); b.classList.add('drop');
+});
+$('tabs').addEventListener('dragleave', e => { const b = dropTab(e); if (b && !b.contains(e.relatedTarget)) b.classList.remove('drop'); });
+$('tabs').addEventListener('drop', async e => {
+  const b = dropTab(e); if (!b) return;
+  e.preventDefault(); b.classList.remove('drop'); dragging = false;
+  const dev = e.dataTransfer.getData('text/x-dev'); if (!dev) return;
+  try { await setGroup(dev, b.dataset.g); } catch (err) { alert(err.message); }
+});
+
+// ✎ on a tile: its group, one tap
+$('devs').addEventListener('click', e => {
+  const b = e.target.closest('[data-edit]'); if (!b) return;
+  e.preventDefault(); e.stopPropagation();
+  edDev = b.dataset.edit; $('ede').textContent = ''; $('ed').hidden = false; fillEd();
+});
+function fillEd() {
+  const d = (S.devices || []).find(x => x.id === edDev), cur = groups[edDev] || '';
+  $('edt').textContent = d ? (d.system.name || d.id) + ' · ' + d.id : edDev;
+  const chip = (g, label) => `<button type="button" class="gchip${g === cur ? ' on' : ''}" data-g="${esc(g)}">${esc(label)}</button>`;
+  const h = shownGroups.map(n => chip(n, n)).join('') + chip('', 'без группы') + chip(ARCH, '🗄 ' + ARCH) + '<button type="button" class="gchip" data-new="1">+ новая…</button>';
+  if ($('edg').dataset.html !== h) { $('edg').innerHTML = h; $('edg').dataset.html = h; }
+}
+$('ed').addEventListener('click', async e => {
+  if (e.target === $('ed') || e.target.closest('[data-e="close"]')) { $('ed').hidden = true; return; }
+  const c = e.target.closest('.gchip'); if (!c) return;
+  const g = c.dataset.new ? newGroup() : c.dataset.g;
+  if (g === null) return;
+  try { await setGroup(edDev, g); $('ed').hidden = true; } catch (err) { $('ede').textContent = err.message; }
+});
+
+// ⚙: the groups — the order of the tabs, rename, delete, add
+function fillSettings() {
+  const last = shownGroups.length - 1;
+  const h = shownGroups.map((n, i) => `<div class="grow" data-n="${esc(n)}"><span class="gn">${esc(n)}<small>${groupCount(n)}</small></span>`
+    + `<button class="btn" data-s="up" title="левее"${i ? '' : ' disabled'}>▲</button><button class="btn" data-s="down" title="правее"${i < last ? '' : ' disabled'}>▼</button>`
+    + `<button class="btn" data-s="ren" title="переименовать">✎</button><button class="btn" data-s="del" title="удалить группу">🗑</button></div>`).join('')
+    + `<div class="grow"><span class="gn">🗄 ${ARCH}<small>${groupCount(ARCH)}</small></span><span class="q" style="margin:0">всегда последняя</span></div>`;
+  if ($('sgroups').dataset.html !== h) { $('sgroups').innerHTML = h; $('sgroups').dataset.html = h; }
+}
+$('gear').addEventListener('click', () => { $('sett').hidden = false; fillSettings(); });
+$('sett').addEventListener('click', async e => {
+  if (e.target === $('sett')) { $('sett').hidden = true; return; }
+  const b = e.target.closest('[data-s]'); if (!b) return;
+  const n = b.closest('.grow') ? b.closest('.grow').dataset.n : null;
+  try {
+    switch (b.dataset.s) {
+      case 'close': $('sett').hidden = true; return;
+      case 'add': if (newGroup()) render(); return;
+      case 'up': case 'down': {
+        const ord = [...shownGroups], i = ord.indexOf(n), j = i + (b.dataset.s === 'up' ? -1 : 1);
+        if (i < 0 || j < 0 || j >= ord.length) return;
+        [ord[i], ord[j]] = [ord[j], ord[i]];
+        await api('/api/group/order', 'PUT', { order: ord });
+        pending.sort((x, y) => ord.indexOf(x) - ord.indexOf(y)); savePending();
+        return poll();
+      }
+      case 'ren': {
+        const to = (prompt(`Новое название группы «${n}»:`, n) || '').trim().slice(0, 40);
+        if (!to || to === n) return;
+        if (to === '*' || to === '+') return alert('Такое название занято.');
+        if (to === ARCH) return alert('«Архив» — особая группа: переложите устройства в неё через ✎ на плитке.');
+        if (pending.includes(n)) { pending = pending.map(x => x === n ? to : x); savePending(); }
+        else await api('/api/group/rename', 'POST', { from: n, to });
+        if (tab === n) setTab(to, false);
+        return poll();
+      }
+      case 'del': {
+        const c = groupCount(n);
+        if (!confirm(`Удалить группу «${n}»?` + (c ? `\n\nЕё устройства (${c}) станут «без группы».` : ''))) return;
+        pending = pending.filter(x => x !== n); savePending();
+        await api('/api/group/delete', 'POST', { name: n });
+        if (tab === n) setTab('*', false);
+        return poll();
+      }
+    }
+  } catch (err) { alert(err.message); }
+});
+document.addEventListener('keydown', e => { if (e.key === 'Escape') { $('sett').hidden = true; $('ed').hidden = true; } });
 poll(); setInterval(() => { if (!document.hidden) poll(); }, 3000);
 </script>
+<script src="/common.js"></script>
 </body>
 </html>

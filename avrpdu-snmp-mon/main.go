@@ -30,6 +30,7 @@ var webFS embed.FS
 type Config struct {
 	Listen   string `yaml:"listen"`
 	Profiles string `yaml:"profiles"`
+	Groups   string `yaml:"groups_file"` // the groups of the tabs (JSON); default: $STATE_DIRECTORY/groups.json
 	Influx   struct {
 		URL       string `yaml:"url"`
 		Org       string `yaml:"org"`
@@ -37,6 +38,11 @@ type Config struct {
 		TokenFile string `yaml:"token_file"`
 	} `yaml:"influx"`
 	Devices []DevConf `yaml:"devices"`
+}
+
+type groupReq struct {
+	Dev, Group, From, To, Name string
+	Order                      []string
 }
 
 type DevConf struct {
@@ -192,17 +198,59 @@ func main() {
 		return d
 	}
 
+	if cfg.Groups == "" && os.Getenv("STATE_DIRECTORY") != "" {
+		cfg.Groups = strings.Split(os.Getenv("STATE_DIRECTORY"), ":")[0] + "/groups.json"
+	}
+	grp, err := loadGroups(cfg.Groups)
+	if err != nil {
+		log.Fatal(err)
+	}
+
 	sub, _ := fs.Sub(webFS, "web")
 	mux := http.NewServeMux()
 	mux.Handle("GET /", http.FileServer(http.FS(sub)))
+	// who looks: the public site (nginx with logins) gives X-Pdu-User and X-Pdu-Role (admin or view);
+	// without them (the page opened in the LAN) everything is allowed, as before
+	mux.HandleFunc("GET /api/me", func(w http.ResponseWriter, r *http.Request) {
+		reply(w, 200, map[string]string{"user": r.Header.Get("X-Pdu-User"), "role": role(r)})
+	})
 	// all the devices for the main page, in the order of the config
 	mux.HandleFunc("GET /api/devices", func(w http.ResponseWriter, r *http.Request) {
 		out := make([]State, 0, len(order))
 		for _, id := range order {
 			out = append(out, devs[id].p.snapshot())
 		}
-		reply(w, 200, map[string]any{"devices": out, "history": token != "", "version": version})
+		gm, gord := grp.view()
+		reply(w, 200, map[string]any{"devices": out, "history": token != "", "version": version, "groups": gm, "group_order": gord})
 	})
+	// the groups (tabs) of the main page: JSON only, as /api/outlet
+	groupAPI := func(path string, do func(q groupReq) error) {
+		mux.HandleFunc(path, func(w http.ResponseWriter, r *http.Request) {
+			if !strings.HasPrefix(r.Header.Get("Content-Type"), "application/json") {
+				reply(w, 415, map[string]string{"error": "нужен application/json"})
+				return
+			}
+			var q groupReq
+			if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 16384)).Decode(&q); err != nil {
+				reply(w, 400, map[string]string{"error": "плохой JSON"})
+				return
+			}
+			if err := do(q); err != nil {
+				reply(w, 400, map[string]string{"error": err.Error()})
+				return
+			}
+			reply(w, 200, map[string]any{"ok": true})
+		})
+	}
+	groupAPI("PUT /api/group", func(q groupReq) error { // {"dev": "ccu1", "group": "Шкаф 1"} ("" = no group)
+		if devs[q.Dev] == nil {
+			return fmt.Errorf("нет устройства %s", q.Dev)
+		}
+		return grp.set(q.Dev, q.Group)
+	})
+	groupAPI("POST /api/group/rename", func(q groupReq) error { return grp.rename(q.From, q.To) }) // {"from", "to"}
+	groupAPI("POST /api/group/delete", func(q groupReq) error { return grp.remove(q.Name) })       // {"name"}
+	groupAPI("PUT /api/group/order", func(q groupReq) error { return grp.setOrder(q.Order) })      // {"order": [...]}
 	mux.HandleFunc("GET /api/state", func(w http.ResponseWriter, r *http.Request) {
 		if d := pick(w, r.URL.Query().Get("dev")); d != nil {
 			reply(w, 200, d.p.snapshot())
@@ -254,7 +302,7 @@ func main() {
 		}
 		reply(w, 200, h)
 	})
-	srv := &http.Server{Addr: cfg.Listen, Handler: mux, ReadHeaderTimeout: 10 * time.Second}
+	srv := &http.Server{Addr: cfg.Listen, Handler: viewOnly(mux), ReadHeaderTimeout: 10 * time.Second}
 	log.Printf("donoff-pdu-view %s: %d devices, page on %s, history %v", version, len(order), cfg.Listen, token != "")
 	log.Fatal(srv.ListenAndServe())
 }
@@ -264,4 +312,23 @@ func reply(w http.ResponseWriter, code int, v any) {
 	w.Header().Set("Cache-Control", "no-store")
 	w.WriteHeader(code)
 	json.NewEncoder(w).Encode(v)
+}
+
+// role: "view" or "admin" from the public site; "admin" without the header (the LAN).
+func role(r *http.Request) string {
+	if r.Header.Get("X-Pdu-Role") == "view" {
+		return "view"
+	}
+	return "admin"
+}
+
+// viewOnly: a "view" user only reads (nginx refuses the writes too; this is the second lock).
+func viewOnly(h http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if role(r) == "view" && r.Method != http.MethodGet && r.Method != http.MethodHead {
+			reply(w, 403, map[string]string{"error": "нет прав на изменение: войдите как admin"})
+			return
+		}
+		h.ServeHTTP(w, r)
+	})
 }

@@ -30,6 +30,7 @@ type Field struct {
 	Label string         `yaml:"label" json:"label,omitempty"`
 	Map   map[int]string `yaml:"map" json:"-"` // texts of the values: units, states
 	In    []int          `yaml:"in" json:"-"`  // for an alarm: the values that are one (Elemy CCU: the active states)
+	Min   *float64       `yaml:"min" json:"-"` // for a state: yes when the value (scaled) is at least this (PWG2: the outlet voltage)
 }
 
 func (f *Field) ok() bool { return f != nil && f.OID != "" }

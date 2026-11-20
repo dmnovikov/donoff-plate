@@ -1,0 +1,85 @@
+# Exagate PWG2 (Volkhov PWG2-...): a PDU with metered outlets, phases, circuits (breakers C1..)
+# and plug-in temperature/humidity sensors. exagate-V2.0.2.mib, the V2 tree (enterprise 35483.5):
+# the tables of ports (outlets), circuits, phases, totals, switches (relays), sensors; a row is
+# device.index.type (type: 1 V, 2 A, 3 Hz, 4 PF, 5 kW, 6 kVA, 7 kvar, 8/9 THD, 10 kWh, 11 load, 12 fuse);
+# a value is divided by its scale (column 3); isAlarm (column 7): 0 normal, 1 alarm, 2 critical, 3 n/a.
+# The sysObjectID of PWG2 is .1.3.6.1.4.1.35483.5.1.2.1.1.7.1 (the serial number object).
+# This profile: the metering ones (no relays): an outlet is on while it has voltage; the switched
+# ones: exagate-pwg2-sw (by the config).
+# Read only here: the relays and the thresholds are writable by SNMP, not done.
+id: exagate-pwg2
+vendor: Exagate
+model: PWG2
+title: Exagate PWG2 — PDU
+kind: ПДУ
+description: |
+  Блок распределения питания для стойки Exagate PWG2 (Volkhov): учёт на каждой розетке
+  (напряжение, ток, мощность, энергия), по фазам и по группам с автоматами, датчики температуры
+  и влажности. Здесь по SNMP всё только читается.
+links:
+  - https://www.exagate.com
+match: [.1.3.6.1.4.1.35483.5]
+
+alarms:
+  - {oid: ".1.3.6.1.4.1.35483.5.2.2.1.1.7.1.1.12", in: [1, 2], label: автомат C1}
+  - {oid: ".1.3.6.1.4.1.35483.5.2.2.1.1.7.1.2.12", in: [1, 2], label: автомат C2}
+  - {oid: ".1.3.6.1.4.1.35483.5.2.2.1.1.7.1.3.12", in: [1, 2], label: автомат C3}
+  - {oid: ".1.3.6.1.4.1.35483.5.2.2.1.1.7.1.4.12", in: [1, 2], label: автомат C4}
+  - {oid: ".1.3.6.1.4.1.35483.5.2.2.1.1.7.1.5.12", in: [1, 2], label: автомат C5}
+  - {oid: ".1.3.6.1.4.1.35483.5.2.2.1.1.7.1.6.12", in: [1, 2], label: автомат C6}
+  - {oid: ".1.3.6.1.4.1.35483.5.2.2.1.1.7.1.7.12", in: [1, 2], label: автомат C7}
+  - {oid: ".1.3.6.1.4.1.35483.5.2.2.1.1.7.1.8.12", in: [1, 2], label: автомат C8}
+  - {oid: ".1.3.6.1.4.1.35483.5.2.2.1.1.7.1.9.12", in: [1, 2], label: автомат C9}
+  - {oid: ".1.3.6.1.4.1.35483.5.2.2.1.1.7.1.10.12", in: [1, 2], label: автомат C10}
+  - {oid: ".1.3.6.1.4.1.35483.5.2.2.1.1.7.1.11.12", in: [1, 2], label: автомат C11}
+  - {oid: ".1.3.6.1.4.1.35483.5.2.2.1.1.7.1.12.12", in: [1, 2], label: автомат C12}
+  - {oid: ".1.3.6.1.4.1.35483.5.2.4.1.1.7.1.1.2", in: [1, 2], label: общий ток вне нормы}
+  - {oid: ".1.3.6.1.4.1.35483.5.2.4.1.1.7.1.1.11", in: [1, 2], label: перегрузка PDU}
+
+system:
+  model:    {oid: .1.3.6.1.4.1.35483.5.1.2.1.1.8.1, type: text}   # part number
+  serial:   {oid: .1.3.6.1.4.1.35483.5.1.2.1.1.7.1, type: text}
+  firmware: {oid: .1.3.6.1.4.1.35483.5.1.2.1.1.4.1, type: text}
+  name:     {oid: .1.3.6.1.4.1.35483.5.1.2.1.1.6.1, type: text}
+  location: {oid: .1.3.6.1.2.1.1.6.0, type: text}
+  uptime:   {oid: .1.3.6.1.2.1.1.3.0, scale: 0.01}
+
+# the phases L1..L3 as the inputs (numberOfPhases)
+ats:
+  title: Фазы
+  inputs_oid: {oid: .1.3.6.1.4.1.35483.5.1.3.1.1.6.1}
+
+input:
+  v:   {oid: ".1.3.6.1.4.1.35483.5.2.3.1.1.2.1.{n}.1", scale: 0.1}
+  ma:  {oid: ".1.3.6.1.4.1.35483.5.2.3.1.1.2.1.{n}.2"}              # A x1000 = mA
+  hz:  {oid: ".1.3.6.1.4.1.35483.5.2.3.1.1.2.1.{n}.3", scale: 0.01}
+  w:   {oid: ".1.3.6.1.4.1.35483.5.2.3.1.1.2.1.{n}.5"}              # kW x1000 = W
+  var: {oid: ".1.3.6.1.4.1.35483.5.2.3.1.1.2.1.{n}.7"}
+  alarms:
+    - {oid: ".1.3.6.1.4.1.35483.5.2.3.1.1.7.1.{n}.1", in: [1, 2], label: напряжение вне нормы}
+    - {oid: ".1.3.6.1.4.1.35483.5.2.3.1.1.7.1.{n}.2", in: [1, 2], label: ток вне нормы}
+
+outlets:
+  count_oid: {oid: .1.3.6.1.4.1.35483.5.1.3.1.1.8.1}   # numberOfOutlets
+  first: 1
+  on:   {oid: ".1.3.6.1.4.1.35483.5.2.1.1.1.2.1.{n}.1", scale: 0.1, min: 100}   # metering only: on while the outlet has voltage
+  ma:   {oid: ".1.3.6.1.4.1.35483.5.2.1.1.1.2.1.{n}.2"}
+  w:    {oid: ".1.3.6.1.4.1.35483.5.2.1.1.1.2.1.{n}.5"}
+  va:   {oid: ".1.3.6.1.4.1.35483.5.2.1.1.1.2.1.{n}.6"}
+  var:  {oid: ".1.3.6.1.4.1.35483.5.2.1.1.1.2.1.{n}.7"}
+  kwh:  {oid: ".1.3.6.1.4.1.35483.5.2.1.1.1.2.1.{n}.10", scale: 0.01}
+  alarms:
+    - {oid: ".1.3.6.1.4.1.35483.5.2.1.1.1.7.1.{n}.2", yes: 1, label: ток выше нормы}
+    - {oid: ".1.3.6.1.4.1.35483.5.2.1.1.1.7.1.{n}.2", yes: 2, label: ток выше критического}
+
+sensors:
+  - title: Датчики
+    count_oid: {oid: .1.3.6.1.4.1.35483.5.1.3.1.1.10.1}   # numberOfSensors
+    first: 1
+    avail:  {oid: ".1.3.6.1.4.1.35483.5.2.6.1.1.4.1.{n}.1"}
+    name:   {oid: ".1.3.6.1.4.1.35483.5.2.6.1.1.1.1.{n}.1", type: text}
+    value:  {oid: ".1.3.6.1.4.1.35483.5.2.6.1.1.2.1.{n}.1"}
+    div:    {oid: ".1.3.6.1.4.1.35483.5.2.6.1.1.3.1.{n}.1"}
+    unit:   {oid: ".1.3.6.1.4.1.35483.5.2.6.1.1.5.1.{n}.1", type: text}
+    status: {oid: ".1.3.6.1.4.1.35483.5.2.6.1.1.7.1.{n}.1", ok: 0, map: {1: авария, 2: критично, 3: нет связи}}
+    na: [3]

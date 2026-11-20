@@ -1,6 +1,11 @@
 package main
 
-import "testing"
+import (
+	"net/http"
+	"net/http/httptest"
+	"strings"
+	"testing"
+)
 
 func TestProfiles(t *testing.T) {
 	all, err := loadProfiles("")
@@ -133,5 +138,50 @@ func TestElemyCCU(t *testing.T) {
 	}
 	if !g.VStatus.alarm(7) || g.VStatus.alarm(3) || g.VStatus.alarm(0) {
 		t.Error("alarm by in")
+	}
+}
+
+func TestGroups(t *testing.T) {
+	path := t.TempDir() + "/groups.json"
+	g, _ := loadGroups(path)
+	g.set("a", " Шкаф 1 ")
+	g.set("b", "Шкаф 1")
+	g.set("c", "Стойка")
+	g.setOrder([]string{"Стойка", "Шкаф 1", "Стойка", " "})
+	if err := g.rename("Шкаф 1", "Шкаф"); err != nil {
+		t.Fatal(err)
+	}
+	g2, err := loadGroups(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	m, ord := g2.view()
+	if m["a"] != "Шкаф" || m["b"] != "Шкаф" || m["c"] != "Стойка" || strings.Join(ord, ",") != "Стойка,Шкаф" {
+		t.Fatalf("groups %q, order %q", m, ord)
+	}
+	g2.remove("Стойка")
+	if m, ord := g2.view(); len(m) != 2 || strings.Join(ord, ",") != "Шкаф" {
+		t.Fatalf("after remove: %q %q", m, ord)
+	}
+	if g2.set("x", "a\nb") == nil || g2.rename("Шкаф", strings.Repeat("я", 41)) == nil {
+		t.Fatal("bad names accepted")
+	}
+}
+
+func TestViewOnly(t *testing.T) {
+	h := viewOnly(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(200) }))
+	for _, c := range []struct {
+		method, role string
+		code         int
+	}{{"GET", "view", 200}, {"PUT", "view", 403}, {"POST", "view", 403}, {"POST", "admin", 200}, {"PUT", "", 200}} {
+		r := httptest.NewRequest(c.method, "/api/group", nil)
+		if c.role != "" {
+			r.Header.Set("X-Pdu-Role", c.role)
+		}
+		w := httptest.NewRecorder()
+		h.ServeHTTP(w, r)
+		if w.Code != c.code {
+			t.Errorf("%s as %q: %d, want %d", c.method, c.role, w.Code, c.code)
+		}
 	}
 }

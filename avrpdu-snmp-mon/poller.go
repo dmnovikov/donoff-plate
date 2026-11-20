@@ -260,7 +260,13 @@ func (q *req) int(f *Field, n int, dst *int) {
 	q.add(f, n, func(v gosnmp.SnmpPDU) { *dst = int(value(f, v)) })
 }
 func (q *req) yes(f *Field, n int, dst *int) {
-	q.add(f, n, func(v gosnmp.SnmpPDU) { *dst = b2i(int(value(f, v)) == f.yes()) })
+	q.add(f, n, func(v gosnmp.SnmpPDU) {
+		if f.Min != nil {
+			*dst = b2i(!missing(v) && value(f, v) >= *f.Min)
+		} else {
+			*dst = b2i(int(value(f, v)) == f.yes())
+		}
+	})
 }
 func (q *req) text(f *Field, n int, dst *string) {
 	q.add(f, n, func(v gosnmp.SnmpPDU) { *dst = text(v) })
@@ -468,7 +474,7 @@ func (p *poller) outlets() error {
 	for i := range outs {
 		x, n := &outs[i], outs[i].N
 		q.int(o.Admin, n, &x.Admin)
-		if o.On.ok() && o.On.Yes != nil {
+		if o.On.ok() && (o.On.Yes != nil || o.On.Min != nil) {
 			q.yes(o.On, n, &x.On) // a state code (Raritan: 7 on): 1 or 0
 		} else {
 			q.int(o.On, n, &x.On)

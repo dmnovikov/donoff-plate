@@ -3,6 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<script>try { document.documentElement.dataset.theme = localStorage.getItem('pdu.theme') || 'dark'; } catch (e) { document.documentElement.dataset.theme = 'dark'; }</script>
 <title>Устройство</title>
 <style>
 :root {
@@ -104,6 +105,15 @@ details#about[open] > summary { margin-bottom: 8px; }
 .msg { color: var(--muted); padding: 20px 0; text-align: center; font-size: 13px; }
 .msg.err { color: var(--bad); }
 footer { flex: none; color: var(--muted); font-size: 12px; text-align: center; padding: 10px 16px 12px; border-top: 1px solid var(--line); background: var(--card); }
+.ubar { margin-left: auto; display: inline-flex; align-items: center; gap: 8px; font-size: 13px; color: var(--muted); }
+.ubar #uname { display: inline-flex; align-items: center; gap: 8px; }
+.ubtn { padding: 2px 9px; font: inherit; font-size: 13px; line-height: 1.5; border: 1px solid var(--line); border-radius: 8px; background: var(--soft); color: var(--text); cursor: pointer; }
+.ubtn:hover { border-color: var(--muted); }
+.legend ~ .ubar { margin-left: 0; }
+.napi { display: inline-flex; align-items: center; color: var(--text); text-decoration: none; flex: none; }
+.napi svg { height: 26px; width: auto; display: block; }
+footer .by { margin-top: 2px; font-size: 11px; letter-spacing: .02em; }
+[data-role="view"] .admin-only { display: none !important; }
 </style>
 </head>
 <body>
@@ -119,7 +129,7 @@ footer { flex: none; color: var(--muted); font-size: 12px; text-align: center; p
   <div id="sens"></div>
   <details class="card" id="about"><summary>Об устройстве</summary><div id="aboutbody"></div></details>
 </main>
-<footer id="foot"></footer>
+<footer><span id="foot"></span></footer>
 <script>
 const $ = id => document.getElementById(id);
 const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
@@ -231,8 +241,8 @@ function render() {
   $('outs').innerHTML = outs.map(o => {
     const al = o.alarms || [];
     const ctl = o.ctl ? `<div class="sw">${o.admin
-        ? `<button class="btn off" data-sw="${o.n}" data-on="0"${o.next_s > 0 || busy ? ' disabled' : ''}>выключить</button>`
-        : `<button class="btn on" data-sw="${o.n}" data-on="1"${o.next_s > 0 || busy ? ' disabled' : ''}>включить</button>`}
+        ? `<button class="admin-only btn off" data-sw="${o.n}" data-on="0"${o.next_s > 0 || busy ? ' disabled' : ''}>выключить</button>`
+        : `<button class="admin-only btn on" data-sw="${o.n}" data-on="1"${o.next_s > 0 || busy ? ' disabled' : ''}>включить</button>`}
         ${o.next_s > 0 ? `<span class="q">можно через ${Math.ceil(o.next_s)} с</span>` : ''}</div>` : '';
     return `<div class="out${o.on ? '' : ' offst'}${al.length ? ' alarm' : ''}${o.ctl ? ' ctl' : ''}">
       <div class="h"><b title="${esc(o.name)}">${o.name ? o.n + ' · ' + esc(o.name) : esc((s.profile.outlet_item || 'розетка') + ' ' + o.n)}</b><span class="pill ${o.on ? 'on' : 'off'}">${o.on ? 'ВКЛ' : 'ВЫКЛ'}</span></div>
@@ -300,5 +310,6 @@ function spark(key, unit, dec) {
 poll(); setInterval(() => { if (!document.hidden) poll(); }, 2000);
 loadSparks(); setInterval(loadSparks, 5000);
 </script>
+<script src="/common.js"></script>
 </body>
 </html>

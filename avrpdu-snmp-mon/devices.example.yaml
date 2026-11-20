@@ -45,3 +45,28 @@ devices:
   - id: ccu2
     host: 192.168.0.91
     community: public
+  - id: pwg1
+    host: 192.168.0.154
+    community: v1read
+  - id: pwg2
+    host: 192.168.0.155
+    community: v1read
+    profile: exagate-pwg2-sw
+  - id: pwg3
+    host: 192.168.0.156
+    community: v1read
+    profile: exagate-pwg2-sw
+  - id: pwg4
+    host: 192.168.0.157
+    community: v1read
+  - id: pwg5
+    host: 192.168.0.158
+    community: v1read
+  - id: pwg6
+    host: 192.168.0.159
+    community: v1read
+    profile: exagate-pwg2-sw
+  - id: exagate2
+    host: 192.168.0.179
+    community: v1read
+    profile: exagate-sysg4001
