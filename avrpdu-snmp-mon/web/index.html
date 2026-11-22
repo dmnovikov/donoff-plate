@@ -31,7 +31,9 @@ main { flex: 1 0 auto; width: 100%; max-width: 1400px; margin: 0 auto; padding: 
 .dev:hover { border-color: var(--accent); }
 .dev.stale { filter: grayscale(1); opacity: .7; }
 .h { display: flex; align-items: center; gap: 8px; }
-.h b { flex: 1; min-width: 0; font-size: 16px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.h b { flex: 0 1 auto; min-width: 0; font-size: 16px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.h .st { flex: none; margin-right: auto; font-size: 12px; font-weight: 700; white-space: nowrap; color: var(--muted); }
+.h .st.ok { color: var(--ok); } .h .st.warn { color: var(--warn); } .h .st.bad { color: var(--bad); }
 .h .go { color: var(--accent); font-size: 22px; line-height: 1; }
 .dot { display: inline-block; width: 9px; height: 9px; border-radius: 50%; background: var(--muted); flex: none; }
 .dot.ok { background: var(--ok); } .dot.bad { background: var(--bad); } .dot.warn { background: var(--warn); } .dot.off { background: var(--muted); }
@@ -68,6 +70,7 @@ header { padding-bottom: 0; }
 .tab .n { font-size: 11px; color: var(--muted); font-weight: 400; font-variant-numeric: tabular-nums; }
 .tab .off { width: 7px; height: 7px; border-radius: 50%; background: var(--bad); flex: none; }
 .tab.add { font-size: 16px; padding: 4px 12px; }
+.tab.auto { text-decoration: none; }
 .tab.arch { margin-left: auto; }
 .tab.drop { outline: 2px dashed var(--accent); outline-offset: -3px; color: var(--text); }
 .group { margin-bottom: 22px; }
@@ -112,7 +115,7 @@ footer .by { margin-top: 2px; font-size: 11px; letter-spacing: .02em; }
   <h1>АВР и PDU</h1>
   <span class="meta" id="meta">подключение…</span>
   <span class="flt"><select id="kind" title="тип устройства"><option value="">все типы</option></select><input type="search" id="q" placeholder="поиск: имя, адрес, модель…" title="ищет по имени, id, адресу, модели, производителю, месту, серийному номеру и группе; несколько слов — все должны быть"></span>
-  <span class="legend"><span><i class="dot ok"></i>норма</span><span><i class="dot warn"></i>авария устройства</span><span><i class="dot bad"></i>пропал ввод</span><span><i class="dot off"></i>не отвечает</span></span>
+  <span class="legend"><span title="всё в порядке"><i class="dot ok"></i>Норма</span><span title="устройство сообщает об аварии (датчик, розетка, само устройство)"><i class="dot warn"></i>Внимание</span><span title="пропал ввод или работа от резервного ввода"><i class="dot bad"></i>Авария</span><span title="не отвечает по SNMP"><i class="dot off"></i>Недоступно</span></span>
   <button class="gear admin-only" id="gear" title="настройки: группы">⚙</button>
   <nav class="tabs" id="tabs"></nav>
 </header>
@@ -155,9 +158,9 @@ function tile(s) {
   const outs = s.outlets, ow = outs.reduce((x, o) => x + o.w, 0);
   // the dot: grey no answer, orange an input is lost (or on the backup), yellow the device tells an alarm, green all fine
   const inLost = H.ats && (onBackup || s.inputs.some(i => !inV(i)));
-  const [dc, dt] = !fresh ? ['off', 'не отвечает'] : inLost ? ['bad', 'пропал ввод'] : alarms.length ? ['warn', 'авария устройства'] : ['ok', 'норма'];
+  const [dc, dt, sn] = !fresh ? ['off', 'не отвечает', 'Недоступно'] : inLost ? ['bad', onBackup ? 'работа от резервного ввода' : 'пропал ввод', 'Авария'] : alarms.length ? ['warn', 'авария устройства: ' + alarms.join(', '), 'Внимание'] : ['ok', 'всё в порядке', 'Норма'];
   return `<a class="dev${fresh ? '' : ' stale'}" data-id="${esc(s.id)}" href="/device.html?${new URLSearchParams({ dev: s.id })}">
-    <div class="h"><span class="dot ${dc}" title="${dt}"></span><b title="${esc(sy.name || s.id)}">${esc(sy.name || s.id)}</b><span class="ebtn admin-only" data-edit="${esc(s.id)}" title="группа">✎</span><span class="go">›</span></div>
+    <div class="h"><span class="dot ${dc}" title="${dt}"></span><b title="${esc(sy.name || s.id)}">${esc(sy.name || s.id)}</b><span class="st ${dc}" title="${esc(dt)}">[${sn}]</span><span class="ebtn admin-only" data-edit="${esc(s.id)}" title="группа">✎</span><span class="go">›</span></div>
     <div class="model">${s.kind ? `<span class="kind">${esc(s.kind)}</span>` : ''}${pr ? esc(pr.vendor + ' ' + pr.model) : 'модель не определена'}${sy.model && pr && sy.model !== pr.model ? ' · ' + esc(sy.model) : ''}</div>
     <div class="kv">
       <span>адрес</span><span>${esc(s.host)}</span>
@@ -223,7 +226,8 @@ function render() {
   const th = tabs.map(([k, label, list]) => {
     const off = k !== ARCH && list.some(d => !isFresh(d));
     return `<button class="tab${k === tab ? ' on' : ''}${k === ARCH ? ' arch' : ''}" data-g="${esc(k)}" title="${esc(label)}"><span class="tn">${esc(label)}</span><span class="n">${list.length}</span>${off ? '<span class="off" title="есть устройства без связи"></span>' : ''}</button>`;
-  }).join('') + '<button class="tab add admin-only" data-g="+" title="новая группа">+</button>';
+  }).join('') + '<button class="tab add admin-only" data-g="+" title="новая группа">+</button>'
+    + '<a class="tab auto admin-only" href="/automation.html" title="автоматизация: правила для розеток и вводов (только admin)"><span class="tn">⚡ Автоматизация</span></a>';
   if ($('tabs').dataset.html !== th) { $('tabs').innerHTML = th; $('tabs').dataset.html = th; }
   if (!$('sett').hidden) fillSettings();
   if (!$('ed').hidden) fillEd();

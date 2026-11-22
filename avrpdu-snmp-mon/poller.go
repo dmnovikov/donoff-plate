@@ -114,7 +114,8 @@ type poller struct {
 	prof  *Profile // nil until found
 	all   map[string]*Profile
 	guard *guard
-	scnt  []int // sensors of each group
+	wsnmp *gosnmp.GoSNMP // the SET with its own community (write_community_file); nil: the read one
+	scnt  []int          // sensors of each group
 }
 
 func newPoller(id, host, community string, mainIn int, prof *Profile, all map[string]*Profile) *poller {
@@ -132,6 +133,18 @@ func newPoller(id, host, community string, mainIn int, prof *Profile, all map[st
 		p.use(prof)
 	}
 	return p
+}
+
+// writeWith: the SETs go with this community (the reads keep theirs).
+func (p *poller) writeWith(community string) error {
+	w := *p.snmp
+	w.Community = community
+	w.Conn = nil
+	if err := w.Connect(); err != nil {
+		return err
+	}
+	p.wsnmp = &w
+	return nil
 }
 
 func (p *poller) use(prof *Profile) {
@@ -696,12 +709,21 @@ func b2i(b bool) int {
 
 // switchOutlet sets the outlet by the profile's switch OID after the guard lets it, and reads the
 // outlets back at once so that the page shows the new state.
-func (p *poller) switchOutlet(n, v int, who string) error {
+// force: without the pace limits of the guard (the drill).
+func (p *poller) switchOutlet(n, v int, who string, force bool) error {
 	if p.prof == nil || !p.prof.Has["switch"] {
 		return errors.New("эта модель не умеет переключать розетки")
 	}
-	if err := p.guard.take(n); err != nil {
+	take := p.guard.take
+	if force {
+		take = p.guard.force
+	}
+	if err := take(n); err != nil {
 		return err
+	}
+	wr := p.snmp
+	if p.wsnmp != nil {
+		wr = p.wsnmp
 	}
 	sw := p.prof.Outlets.Switch
 	val := sw.Off
@@ -709,7 +731,7 @@ func (p *poller) switchOutlet(n, v int, who string) error {
 		val = sw.On
 	}
 	p.smu.Lock()
-	r, err := p.snmp.Set([]gosnmp.SnmpPDU{{Name: strings.ReplaceAll(sw.OID, "{n}", strconv.Itoa(n)), Type: gosnmp.Integer, Value: val}})
+	r, err := wr.Set([]gosnmp.SnmpPDU{{Name: strings.ReplaceAll(sw.OID, "{n}", strconv.Itoa(n)), Type: gosnmp.Integer, Value: val}})
 	p.smu.Unlock()
 	if err == nil && r.Error != gosnmp.NoError {
 		err = fmt.Errorf("snmp set: %v", r.Error)

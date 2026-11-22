@@ -3,17 +3,18 @@
 # by the sensor type (1 current, 4 voltage, 5 power, 6 VA, 8 energy, 14 on/off, 15 trip, 23 Hz);
 # the decimal digits of each type are the device's own (here: the PX3-5493V-K2).
 # This profile: PX3 and the like, whose inlet current has 3 digits (A x1000); PX2: raritan-px2.
-# Read only here: the outlets can be switched by SNMP (outletSwitchControlTable), not done.
+# Switching: outletSwitchControlTable (switchingOperation 0 off, 1 on), only the outlets in the
+# device's control, usually with write_community_file (the read community cannot write).
 id: raritan-px
 vendor: Raritan
 model: PX
 title: Raritan PX — PDU
-kind: ПДУ
+kind: PDU (ПДУ)
 description: |
   Блок распределения питания для стойки Raritan серии PX (PX2, PX3, PX4).
   На вводе и на каждой розетке меряет напряжение, ток, мощность и энергию, у розеток есть реле.
   Розетки разбиты на группы с автоматами. К PDU подключаются внешние датчики (температура,
-  влажность, точка росы и др.). Здесь по SNMP всё только читается.
+  влажность, точка росы и др.). Здесь по SNMP всё читается; переключаются только розетки, разрешённые в конфиге.
 links:
   - https://www.raritan.com
 match: [.1.3.6.1.4.1.13742.6]
@@ -53,6 +54,7 @@ outlets:
   first: 1
   name: {oid: ".1.3.6.1.4.1.13742.6.3.5.3.1.3.1.{n}", type: text}
   on:   {oid: ".1.3.6.1.4.1.13742.6.5.4.3.1.3.1.{n}.14", yes: 7}   # 7 on, 8 off
+  switch: {oid: ".1.3.6.1.4.1.13742.6.4.1.2.1.2.1.{n}", on: 1, off: 0}
   ma:   {oid: ".1.3.6.1.4.1.13742.6.5.4.3.1.4.1.{n}.1"}
   w:    {oid: ".1.3.6.1.4.1.13742.6.5.4.3.1.4.1.{n}.5"}
   va:   {oid: ".1.3.6.1.4.1.13742.6.5.4.3.1.4.1.{n}.6"}

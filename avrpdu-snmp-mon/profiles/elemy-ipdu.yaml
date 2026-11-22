@@ -5,7 +5,7 @@ id: elemy-ipdu
 vendor: Elemy
 model: IPDU
 title: Elemy IPDU — PDU
-kind: ПДУ
+kind: PDU (ПДУ)
 description: |
   Блок распределения питания для стойки (IPDU-1502 и другие модели на плате PIC).
   На вводе меряет напряжение, ток, частоту, активную и реактивную мощность и энергию, следит за

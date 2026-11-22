@@ -93,7 +93,7 @@ func TestRaritan(t *testing.T) {
 	if p == nil || p.ID != "raritan-px" {
 		t.Fatalf("Raritan not matched: %v", p)
 	}
-	if !p.Has["ats"] || p.Has["switch"] || !p.Has["outlet.va"] || !p.Has["sensors"] || p.Outlets.On.yes() != 7 {
+	if !p.Has["ats"] || !p.Has["switch"] || !p.Has["outlet.va"] || !p.Has["sensors"] || p.Outlets.On.yes() != 7 {
 		t.Errorf("Raritan has: %v", p.Has)
 	}
 	g := p.Sensors[0]

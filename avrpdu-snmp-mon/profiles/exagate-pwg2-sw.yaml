@@ -11,7 +11,7 @@ id: exagate-pwg2-sw
 vendor: Exagate
 model: PWG2
 title: Exagate PWG2 — PDU с реле
-kind: ПДУ
+kind: PDU (ПДУ)
 description: |
   Блок распределения питания для стойки Exagate PWG2 (Volkhov): учёт на каждой розетке
   (напряжение, ток, мощность, энергия), по фазам и по группам с автоматами, датчики температуры

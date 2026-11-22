@@ -9,7 +9,7 @@ id: raritan-px2
 vendor: Raritan
 model: PX2
 title: Raritan PX2 — PDU
-kind: ПДУ
+kind: PDU (ПДУ)
 description: |
   Блок распределения питания для стойки Raritan серии PX (PX2, PX3, PX4).
   На вводе и на каждой розетке меряет напряжение, ток, мощность и энергию, у розеток есть реле.

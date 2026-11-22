@@ -80,3 +80,15 @@ func (g *guard) take(n int) error {
 	g.last[n] = append(g.last[n], now)
 	return nil
 }
+
+// force books a switch of outlet n now without the pace limits (the drill puts the outlets back
+// at once); the outlet must still be allowed.
+func (g *guard) force(n int) error {
+	if !g.allowed(n) {
+		return fmt.Errorf("розеткой %d управлять отсюда нельзя", n)
+	}
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	g.last[n] = append(g.last[n], time.Now())
+	return nil
+}

@@ -37,7 +37,9 @@ type Config struct {
 		Bucket    string `yaml:"bucket"`
 		TokenFile string `yaml:"token_file"`
 	} `yaml:"influx"`
-	Devices []DevConf `yaml:"devices"`
+	Devices   []DevConf   `yaml:"devices"`
+	Drills    []DrillConf `yaml:"drills"`     // the automations: UPS drills (drill.go)
+	DrillsLog string      `yaml:"drills_log"` // the journal (JSON); default: $STATE_DIRECTORY/drills.json
 }
 
 type groupReq struct {
@@ -46,15 +48,16 @@ type groupReq struct {
 }
 
 type DevConf struct {
-	ID        string        `yaml:"id"`        // the name in the address and in InfluxDB (tag dev)
-	Host      string        `yaml:"host"`      // host or host:port
-	Community string        `yaml:"community"` // public by default
-	Profile   string        `yaml:"profile"`   // auto by default
-	Main      int           `yaml:"main"`      // the main input, 1 by default
-	Control   string        `yaml:"control"`   // the outlets the page may switch: "1" or "1,3"
-	MinGap    time.Duration `yaml:"min_gap"`   // 10s by default
-	MaxHour   int           `yaml:"max_hour"`  // 20 by default
-	Kind      string        `yaml:"kind"`      // the kind on the page instead of the profile's (ПДУ, АВР, ...)
+	ID        string        `yaml:"id"`                   // the name in the address and in InfluxDB (tag dev)
+	Host      string        `yaml:"host"`                 // host or host:port
+	Community string        `yaml:"community"`            // public by default
+	Profile   string        `yaml:"profile"`              // auto by default
+	Main      int           `yaml:"main"`                 // the main input, 1 by default
+	Control   string        `yaml:"control"`              // the outlets the page may switch: "1" or "1,3"
+	MinGap    time.Duration `yaml:"min_gap"`              // 10s by default
+	MaxHour   int           `yaml:"max_hour"`             // 20 by default
+	Kind      string        `yaml:"kind"`                 // the kind on the page instead of the profile's: PDU (ПДУ), ATS (АВР), CCU (Контроллер шкафа)
+	WriteFile string        `yaml:"write_community_file"` // the SET community in this file (not in the config); else community
 }
 
 type device struct {
@@ -177,6 +180,15 @@ func main() {
 		if d.p.guard, err = newGuard(c.Control, c.MinGap, max(c.MaxHour, 1)); err != nil {
 			log.Fatalf("device %s: %v", c.ID, err)
 		}
+		if c.WriteFile != "" {
+			b, err := os.ReadFile(c.WriteFile)
+			if err != nil {
+				log.Fatalf("device %s: %v", c.ID, err)
+			}
+			if err := d.p.writeWith(strings.TrimSpace(string(b))); err != nil {
+				log.Fatalf("device %s: %v", c.ID, err)
+			}
+		}
 		go d.p.run()
 		if token != "" {
 			d.ix = newInflux(cfg.Influx.URL, cfg.Influx.Org, cfg.Influx.Bucket, token, c.ID)
@@ -213,6 +225,102 @@ func main() {
 	// without them (the page opened in the LAN) everything is allowed, as before
 	mux.HandleFunc("GET /api/me", func(w http.ResponseWriter, r *http.Request) {
 		reply(w, 200, map[string]string{"user": r.Header.Get("X-Pdu-User"), "role": role(r)})
+	})
+	// the automation tab: only for admin (a "view" user gets 403 on the page and on its API)
+	if cfg.DrillsLog == "" && os.Getenv("STATE_DIRECTORY") != "" {
+		cfg.DrillsLog = strings.Split(os.Getenv("STATE_DIRECTORY"), ":")[0] + "/drills.json"
+	}
+	dlog, err := loadDrillLog(cfg.DrillsLog)
+	if err != nil {
+		log.Fatal(err)
+	}
+	drills := map[string]*drill{}
+	var drillOrder []string
+	for _, c := range cfg.Drills {
+		dr, err := newDrill(c, devs, dlog)
+		if err != nil {
+			log.Fatal(err)
+		}
+		if drills[c.ID] != nil {
+			log.Fatalf("drill %q twice", c.ID)
+		}
+		drills[c.ID] = dr
+		drillOrder = append(drillOrder, c.ID)
+		go dr.recover()
+		log.Printf("drill %s: ats %s, start %s/%d, ups %s/%d, limit %s", c.ID, c.ATS, c.Start.Dev, c.Start.Outlet, c.UPS.Dev, c.UPS.Outlet, dr.conf.Max)
+	}
+	mux.Handle("GET /automation.html", adminOnly(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.ServeFileFS(w, r, sub, "automation.html")
+	})))
+	mux.Handle("GET /api/drills", adminOnly(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		type view struct {
+			DrillConf
+			MaxMin  float64   `json:"max_min"`
+			Why     []string  `json:"why"`
+			Run     *DrillRun `json:"run"`
+			Inputs  []Input   `json:"inputs"`
+			StartOn *int      `json:"start_on"`
+			UPSOn   *int      `json:"ups_on"`
+		}
+		out := []view{}
+		for _, id := range drillOrder {
+			dr := drills[id]
+			v := view{DrillConf: dr.conf, MaxMin: dr.conf.Max.Minutes(), Why: dr.checks(), Run: dr.current()}
+			v.Inputs = dr.ats.p.snapshot().Inputs
+			if o := outletOf(dr.sw.p.snapshot(), dr.conf.Start.Outlet); o != nil {
+				v.StartOn = &o.On
+			}
+			if o := outletOf(dr.ups.p.snapshot(), dr.conf.UPS.Outlet); o != nil {
+				v.UPSOn = &o.On
+			}
+			out = append(out, v)
+		}
+		reply(w, 200, map[string]any{"drills": out, "log": dlog.list(), "now": time.Now()})
+	})))
+	drillAPI := func(path string, do func(dr *drill, q struct {
+		ID     string
+		MaxMin float64
+	}, who string) (any, error)) {
+		mux.Handle(path, adminOnly(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if !strings.HasPrefix(r.Header.Get("Content-Type"), "application/json") {
+				reply(w, 415, map[string]string{"error": "нужен application/json"})
+				return
+			}
+			var q struct {
+				ID     string
+				MaxMin float64 `json:"max_min"`
+			}
+			if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1024)).Decode(&q); err != nil {
+				reply(w, 400, map[string]string{"error": "плохой JSON"})
+				return
+			}
+			dr := drills[q.ID]
+			if dr == nil {
+				reply(w, 404, map[string]string{"error": "нет тренировки " + q.ID})
+				return
+			}
+			v, err := do(dr, struct {
+				ID     string
+				MaxMin float64
+			}{q.ID, q.MaxMin}, who(r))
+			if err != nil {
+				reply(w, 409, map[string]string{"error": err.Error()})
+				return
+			}
+			reply(w, 200, v)
+		})))
+	}
+	drillAPI("POST /api/drill/start", func(dr *drill, q struct {
+		ID     string
+		MaxMin float64
+	}, who string) (any, error) {
+		return dr.begin(who, q.MaxMin)
+	})
+	drillAPI("POST /api/drill/stop", func(dr *drill, q struct {
+		ID     string
+		MaxMin float64
+	}, who string) (any, error) {
+		return map[string]bool{"ok": true}, dr.halt(who)
 	})
 	// all the devices for the main page, in the order of the config
 	mux.HandleFunc("GET /api/devices", func(w http.ResponseWriter, r *http.Request) {
@@ -274,7 +382,7 @@ func main() {
 		if d == nil {
 			return
 		}
-		if err := d.p.switchOutlet(*q.N, *q.On, r.RemoteAddr); err != nil {
+		if err := d.p.switchOutlet(*q.N, *q.On, who(r), false); err != nil {
 			code := 502
 			if !d.p.guard.allowed(*q.N) {
 				code = 403
@@ -320,6 +428,25 @@ func role(r *http.Request) string {
 		return "view"
 	}
 	return "admin"
+}
+
+// who: the login of the public site, else the address.
+func who(r *http.Request) string {
+	if u := r.Header.Get("X-Pdu-User"); u != "" {
+		return u
+	}
+	return r.RemoteAddr
+}
+
+// adminOnly: the page or API is for admin only, even to read.
+func adminOnly(h http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if role(r) != "admin" {
+			reply(w, 403, map[string]string{"error": "только для admin"})
+			return
+		}
+		h.ServeHTTP(w, r)
+	})
 }
 
 // viewOnly: a "view" user only reads (nginx refuses the writes too; this is the second lock).
