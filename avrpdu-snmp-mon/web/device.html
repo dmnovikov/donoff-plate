@@ -47,6 +47,8 @@ main { flex: 1 0 auto; width: 100%; max-width: 1400px; margin: 0 auto; padding: 
 .inp h3 small { color: var(--muted); font-weight: 400; }
 .big { font-size: 34px; font-weight: 650; font-variant-numeric: tabular-nums; margin: 4px 0 2px; }
 .big small { font-size: 16px; color: var(--muted); font-weight: 500; }
+.big .bv { font-size: 18px; color: var(--muted); font-weight: 500; }
+.slb { font-size: 11px; color: var(--muted); margin-top: 6px; }
 .kv { display: grid; grid-template-columns: auto 1fr; gap: 1px 12px; font-size: 13px; margin-top: 6px; }
 .kv > span:nth-child(odd) { color: var(--muted); }
 .kv > span { min-width: 0; overflow-wrap: anywhere; font-variant-numeric: tabular-nums; }
@@ -187,7 +189,7 @@ function renderAbout(s) {
       ${sy.object_id ? `<span>sysObjectID</span><span>${esc(sy.object_id)}</span>` : ''}
       <span>профиль</span><span>${esc(pr.id)}</span>
       <span>вводов / розеток</span><span>${s.inputs.length} / ${s.outlets.length}</span>
-      <span>управление</span><span>${ctl.length ? 'разрешено только для розетки ' + ctl.join(', ') : 'выключено, только чтение'}</span>
+      <span>управление</span><span>${ctl.length ? 'розетка ' + ctl.join(', ') + ' — только во вкладке «Автоматизация»' : 'выключено, только чтение'}</span>
       ${(pr.links || []).map(l => `<span>ссылка</span><span><a href="${esc(l)}" target="_blank" rel="noopener">${esc(l)}</a></span>`).join('')}
     </div>
     <div class="caps">${Object.keys(CAPS).filter(k => H[k]).map(k => `<span>${CAPS[k]}</span>`).join('')}</div>`;
@@ -210,13 +212,20 @@ function render() {
   const a = s.ats, other = s.main === 1 ? 2 : 1;
   const multi = H['ats.active'] && s.inputs.length > 1;
   const role = n => !multi ? '' : n === s.main ? 'основной' : 'резервный';
+  // the big number: the power with the voltage next to it; no power from the device: the voltage
+  const big = i => {
+    const there = i.present || i.v > 0, v = there ? fx(i.v, 0) : '—';
+    if (!H['input.w']) return `<div class="big">${v}<small> В</small></div>`;
+    const w = !there ? '—' : i.w >= 10000 ? fx(i.w / 1000, 1) : fx(i.w, 0), wu = there && i.w >= 10000 ? 'кВт' : 'Вт';
+    return `<div class="big">${w}<small> ${wu}</small><span class="bv"> · ${v} В</span></div>`;
+  };
   const ins = s.inputs.map(i => {
     const ok = inOK(i), act = multi ? a.active === i.n : i.present === 1 && i.v > 0; // one input: while its voltage is there
     return `<div class="inp${act ? ' active' : ''}${ok ? '' : ' fail'}">
       <h3>Ввод ${i.n} <small>${[role(i.n), esc(i.name)].filter(Boolean).join(' · ')}</small>
         ${act ? '<span class="pill act">активен</span>' : multi ? '<span class="pill off">в резерве</span>' : ''}
         ${ok ? '' : '<span class="pill bad">не в норме</span>'}</h3>
-      <div class="big">${i.present || i.v > 0 ? fx(i.v, 0) : '—'}<small> В</small></div>
+      ${big(i)}
       <div class="kv">
         ${H['input.hz'] ? `<span>частота</span><span>${i.hz > 0 ? fx(i.hz, 2) + ' Гц' : '<span class="bad-t">нет</span>'}</span>` : ''}
         ${H['input.ma'] || H['input.w'] ? `<span>ток / мощность</span><span>${H['input.ma'] ? fx(i.ma / 1000, 2) + ' А' : '—'} · ${H['input.w'] ? fx(i.w, 0) + ' Вт' : '—'}${H['input.var'] ? ' · ' + fx(i.var, 0) + ' вар' : ''}</span>` : ''}
@@ -224,7 +233,7 @@ function render() {
         ${H['input.vmin'] || H['input.vmax'] ? `<span>допуск</span><span>${i.vmin || '?'}–${i.vmax || '?'} В</span>` : ''}
         ${H['input.inverted'] ? `<span>фаза</span><span>${i.inverted ? '<span class="bad-t">перепутана</span>' : 'в норме'}</span>` : ''}
         ${(i.alarms || []).length ? `<span>авария</span><span class="bad-t">${esc(i.alarms.join(', '))}</span>` : ''}
-      </div><a class="hb" href="/history.html?${dq({ what: 'ats' })}" title="графики вводов">${spark(`in${i.n}.v`, 'В', 0)}</a></div>`;
+      </div><a class="hb" href="/history.html?${dq({ what: 'ats' })}" title="графики вводов">${!H['input.w'] ? spark(`in${i.n}.v`, 'В', 0) : multi ? spark(`in${i.n}.w`, 'Вт', 0, 'мощность') + spark(`in${i.n}.v`, 'В', 0, 'напряжение') : spark(`in${i.n}.w`, 'Вт', 0)}</a></div>`;
   }).join('');
   const tw = s.inputs.reduce((x, i) => x + i.w, 0), tk = s.inputs.reduce((x, i) => x + i.kwh, 0);
   const onBackup = a.active && a.active !== s.main;
@@ -238,15 +247,12 @@ function render() {
       ${H['ats.priority'] ? `<span>приоритетный ввод <b>${a.priority || 'нет'}</b></span>` : ''}${H['ats.failback'] ? `<span>возврат на приоритетный <b>${a.failback ? 'вкл' : 'выкл'}</b></span>` : ''}</div>`;
 
   const outs = s.outlets, ctlN = outs.filter(o => o.ctl).map(o => o.n);
-  $('foot').textContent = ctlN.length ? `управление: только розетка ${ctlN.join(', ')} (с защитой от частых переключений); остальное только чтение по SNMP` : 'только чтение по SNMP: управление выключено';
+  $('foot').textContent = ctlN.length ? `здесь только чтение по SNMP; розеткой ${ctlN.join(', ')} управляют во вкладке «Автоматизация»` : 'только чтение по SNMP: управление выключено';
   $('outmeta').textContent = outs.length ? `${outs.filter(o => o.on).length} из ${outs.length} включены · ${fx(outs.reduce((x, o) => x + o.w, 0), 0)} Вт` : '';
   $('outs').innerHTML = outs.map(o => {
     const al = o.alarms || [];
-    const ctl = o.ctl ? `<div class="sw">${o.admin
-        ? `<button class="admin-only btn off" data-sw="${o.n}" data-on="0"${o.next_s > 0 || busy ? ' disabled' : ''}>выключить</button>`
-        : `<button class="admin-only btn on" data-sw="${o.n}" data-on="1"${o.next_s > 0 || busy ? ' disabled' : ''}>включить</button>`}
-        ${o.next_s > 0 ? `<span class="q">можно через ${Math.ceil(o.next_s)} с</span>` : ''}</div>` : '';
-    return `<div class="out${o.on ? '' : ' offst'}${al.length ? ' alarm' : ''}${o.ctl ? ' ctl' : ''}">
+    const ctl = ''; // switching only in the automation tiles
+    return `<div class="out${o.on ? '' : ' offst'}${al.length ? ' alarm' : ''}">
       <div class="h"><b title="${esc(o.name)}">${o.name ? o.n + ' · ' + esc(o.name) : esc((s.profile.outlet_item || 'розетка') + ' ' + o.n)}</b><span class="pill ${o.on ? 'on' : 'off'}">${o.on ? 'ВКЛ' : 'ВЫКЛ'}</span></div>
       <div class="w">${fx(o.w, 0)}<small> Вт</small></div>
       <div class="q">${[H['outlet.ma'] && fx(o.ma, 0) + ' мА', H['outlet.kwh'] && fx(o.kwh, 3) + ' кВт·ч'].filter(Boolean).join(' · ')}</div>
@@ -293,7 +299,11 @@ async function loadSparks() {
   if (S) render();
 }
 const spSer = k => SP && (SP.series.find(s => s.key === k) || {}).pts;
-function spark(key, unit, dec) {
+function spark(key, unit, dec, label) {
+  const lb = label ? `<div class="slb">${label}</div>` : '';
+  return lb + spark1(key, unit, dec);
+}
+function spark1(key, unit, dec) {
   if (!SP) return '<div class="spk"></div><div class="sc"><span>загрузка…</span></div>';
   if (SP.error) return `<div class="sc"><span>${esc(SP.error)}</span></div>`;
   const pts = spSer(key);

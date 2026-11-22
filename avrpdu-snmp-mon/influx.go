@@ -168,7 +168,7 @@ func dur(d time.Duration) string {
 }
 
 // history: what=ats (the inputs' voltage and power, the active input), what=outlet&n=7, or
-// what=spark (the inputs' voltage and the outlets' current for the tiles, 24 h).
+// what=spark (the inputs' voltage and power and the outlets' current for the tiles, 24 h).
 func (x *Influx) history(what, n, rng string) (*History, error) {
 	r, ok := ranges[rng]
 	keep := 15 * time.Second
@@ -181,7 +181,7 @@ func (x *Influx) history(what, n, rng string) (*History, error) {
 	var filter string
 	switch what {
 	case "spark":
-		filter = `(r._measurement == "rpcm_input" and r._field == "v") or (r._measurement == "rpcm_outlet" and r._field == "ma") or r._measurement == "rpcm_sensor"`
+		filter = `(r._measurement == "rpcm_input" and (r._field == "v" or r._field == "w")) or (r._measurement == "rpcm_outlet" and r._field == "ma") or r._measurement == "rpcm_sensor"`
 	case "ats":
 		filter = `(r._measurement == "rpcm_input" and (r._field == "v" or r._field == "hz" or r._field == "w")) or (r._measurement == "rpcm_ats" and r._field == "active")`
 	case "outlet":

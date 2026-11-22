@@ -141,9 +141,9 @@ function draw() {
     const v = two('v'), hz = two('hz'), w = two('w'), act = [{ name: 'активный ввод', color: 'var(--relay)', pts: ser('ats.active') }].filter(s => s.pts.length);
     if (!v.length && !w.length && !act.length) { $('charts').innerHTML = '<div class="msg">данных пока нет: точки пишутся раз в 10 с</div>'; return; }
     $('charts').innerHTML = block('Активный ввод <small>от какого ввода работает нагрузка</small>', act) + '<div class="chart" id="ca"></div>'
+      + block('Мощность, Вт', w) + '<div class="chart" id="cw"></div>'
       + block('Напряжение, В', v) + '<div class="chart" id="cv"></div>'
-      + block('Частота, Гц', hz) + '<div class="chart" id="ch"></div>'
-      + block('Мощность, Вт', w) + '<div class="chart" id="cw"></div>';
+      + block('Частота, Гц', hz) + '<div class="chart" id="ch"></div>';
     chart($('ca'), act, { ...o, h: 110, unit: '', dec: 0, y0: 0.6, y1: 2.4, ticks: [1, 2], state: true, tipFmt: v => 'ввод ' + Math.round(v) });
     chart($('cv'), v, { ...o, h: 220, unit: ' В', dec: 0, minSpan: 10 });
     chart($('ch'), hz, { ...o, h: 160, unit: ' Гц', dec: 2, minSpan: 0.2 });
