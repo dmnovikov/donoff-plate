@@ -29,6 +29,7 @@ header { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 16px; pad
 header h1 { font-size: 18px; margin: 0; display: flex; align-items: center; gap: 8px; }
 header .back { color: var(--accent); text-decoration: none; font-size: 20px; line-height: 1; }
 header .meta { color: var(--muted); font-size: 13px; }
+header .meta .hl { color: var(--text); font-weight: 700; }
 main { flex: 1 0 auto; width: 100%; max-width: 1400px; margin: 0 auto; padding: 16px; }
 .card { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px; min-width: 0; margin-bottom: 14px; }
 .card.stale, .outs.stale { filter: grayscale(1); opacity: .7; }
@@ -202,8 +203,9 @@ function render() {
   $('ats').hidden = !H.ats; $('outhead').hidden = $('outs').hidden = !H.outlets;
   $('link').className = 'dot ' + (fresh ? 'ok' : 'bad');
   const sy = s.system;
-  $('meta').innerHTML = esc([sy.model, sy.serial && 'с/н ' + sy.serial, sy.firmware && 'прошивка ' + sy.firmware,
-    sy.temp ? sy.temp + ' °C' : '', sy.uptime_s ? 'работает ' + fmtUp(sy.uptime_s) : '', s.host].filter(Boolean).join(' · '))
+  // the uptime and the address stand out (white and bold in the dark theme)
+  $('meta').innerHTML = [esc(sy.model), sy.serial && esc('с/н ' + sy.serial), sy.firmware && esc('прошивка ' + sy.firmware),
+    sy.temp ? esc(sy.temp + ' °C') : '', sy.uptime_s ? `<b class="hl">работает ${esc(fmtUp(sy.uptime_s))}</b>` : '', s.host && `<b class="hl">${esc(s.host)}</b>`].filter(Boolean).join(' · ')
     + (fresh ? '' : ` · <span class="bad-t">${esc(s.error || 'устройство не отвечает')}</span>`);
   const a = s.ats, other = s.main === 1 ? 2 : 1;
   const multi = H['ats.active'] && s.inputs.length > 1;

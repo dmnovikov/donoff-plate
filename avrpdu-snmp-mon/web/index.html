@@ -37,9 +37,10 @@ main { flex: 1 0 auto; width: 100%; max-width: 1400px; margin: 0 auto; padding: 
 .h .go { color: var(--accent); font-size: 22px; line-height: 1; }
 .dot { display: inline-block; width: 9px; height: 9px; border-radius: 50%; background: var(--muted); flex: none; }
 .dot.ok { background: var(--ok); } .dot.bad { background: var(--bad); } .dot.warn { background: var(--warn); } .dot.off { background: var(--muted); }
-.flt { display: inline-flex; gap: 6px; flex: 1 1 320px; min-width: 0; max-width: 520px; }
+.flt { display: inline-flex; flex-wrap: wrap; gap: 6px; flex: 1 1 320px; min-width: 0; max-width: 820px; }
 .flt select, .flt input { font: inherit; font-size: 13px; padding: 4px 8px; border: 1px solid var(--line); border-radius: 7px; background: var(--soft); color: var(--text); min-width: 0; }
-.flt select { flex: none; max-width: 45%; }
+.flt select { flex: none; max-width: 100%; }
+.flt input { min-width: 160px; }
 .flt input { flex: 1; }
 .flt .on, .flt input:not(:placeholder-shown) { border-color: var(--accent); }
 .legend { margin-left: auto; display: flex; flex-wrap: wrap; gap: 4px 12px; color: var(--muted); font-size: 12px; }
@@ -52,6 +53,9 @@ main { flex: 1 0 auto; width: 100%; max-width: 1400px; margin: 0 auto; padding: 
 .ins { display: flex; gap: 8px; margin-top: 10px; flex-wrap: wrap; }
 .in { flex: 1; min-width: 90px; border: 1px solid var(--line); border-radius: 8px; padding: 4px 8px; background: var(--soft); font-size: 12px; color: var(--muted); }
 .in b { display: block; font-size: 18px; color: var(--text); font-variant-numeric: tabular-nums; }
+.in { container-type: inline-size; }
+.in .iv { display: none; color: var(--muted); font-weight: 400; font-size: 15px; }
+@container (min-width: 170px) { .in .iv { display: inline; } }
 .in.act { border-color: var(--ok); box-shadow: 0 0 0 1px var(--ok); background: var(--card); }
 .in.fail b { color: var(--bad); }
 .pills { display: flex; flex-wrap: wrap; gap: 4px 6px; margin-top: 8px; }
@@ -114,7 +118,7 @@ footer .by { margin-top: 2px; font-size: 11px; letter-spacing: .02em; }
 <header>
   <h1>АВР и PDU</h1>
   <span class="meta" id="meta">подключение…</span>
-  <span class="flt"><select id="kind" title="тип устройства"><option value="">все типы</option></select><input type="search" id="q" placeholder="поиск: имя, адрес, модель…" title="ищет по имени, id, адресу, модели, производителю, месту, серийному номеру и группе; несколько слов — все должны быть"></span>
+  <span class="flt"><select id="kind" title="тип устройства"><option value="">все типы</option></select><select id="vend" title="производитель"><option value="">все производители</option></select><select id="stat" title="статус"><option value="">все статусы</option></select><input type="search" id="q" placeholder="поиск: имя, адрес, модель…" title="ищет по имени, id, адресу, модели, производителю, месту, серийному номеру и группе; несколько слов — все должны быть"></span>
   <span class="legend"><span title="всё в порядке"><i class="dot ok"></i>Норма</span><span title="устройство сообщает об аварии (датчик, розетка, само устройство)"><i class="dot warn"></i>Внимание</span><span title="пропал ввод или работа от резервного ввода"><i class="dot bad"></i>Авария</span><span title="не отвечает по SNMP"><i class="dot off"></i>Недоступно</span></span>
   <button class="gear admin-only" id="gear" title="настройки: группы">⚙</button>
   <nav class="tabs" id="tabs"></nav>
@@ -140,9 +144,23 @@ footer .by { margin-top: 2px; font-size: 11px; letter-spacing: .02em; }
 const $ = id => document.getElementById(id);
 const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 const fx = (v, d) => Number(v).toFixed(d);
+const fmtW = w => w >= 10000 ? fx(w / 1000, 1) + ' кВт' : fx(w, 0) + ' Вт';
 const fmtUp = s => { const d = Math.floor(s / 86400), h = Math.floor(s % 86400 / 3600), m = Math.floor(s % 3600 / 60); return (d ? `${d} д ` : '') + `${h} ч ${m} мин`; };
 const inV = i => i.present === 1 && i.v > 0 && (!i.vmin || i.v >= i.vmin) && (!i.vmax || i.v <= i.vmax); // the voltage is there and normal
 const inOK = i => i.present === 1 && i.v > 0 && (!i.vmin || i.v >= i.vmin) && (!i.vmax || i.v <= i.vmax) && !i.inverted && !(i.alarms || []).length;
+
+// the status of a device: [the dot class, why, the word] — the tile and the status filter
+const STATUSES = ['Норма', 'Внимание', 'Авария', 'Недоступно'];
+function statusOf(s) {
+  const H = s.profile ? s.profile.has : {};
+  const outAl = s.outlets.flatMap(o => o.alarms || []), inAl = s.inputs.flatMap(i => i.alarms || []);
+  const sAl = (s.sensors || []).filter(x => x.alarm).map(x => (x.name || 'датчик') + ': ' + (x.status || 'авария'));
+  const alarms = [...new Set([...(s.alarms || []), ...inAl, ...outAl, ...sAl])];
+  const a = s.ats, multi = H['ats.active'] && s.inputs.length > 1, onBackup = multi && a.active && a.active !== s.main;
+  // grey no answer, orange an input is lost (or on the backup), yellow the device tells an alarm, green all fine
+  const inLost = H.ats && (onBackup || s.inputs.some(i => !inV(i)));
+  return !isFresh(s) ? ['off', 'не отвечает', 'Недоступно'] : inLost ? ['bad', onBackup ? 'работа от резервного ввода' : 'пропал ввод', 'Авария'] : alarms.length ? ['warn', 'авария устройства: ' + alarms.join(', '), 'Внимание'] : ['ok', 'всё в порядке', 'Норма'];
+}
 
 function tile(s) {
   const pr = s.profile, sy = s.system, H = pr ? pr.has : {};
@@ -153,12 +171,13 @@ function tile(s) {
   const a = s.ats, multi = H['ats.active'] && s.inputs.length > 1, onBackup = multi && a.active && a.active !== s.main;
   const ins = H.ats ? `<div class="ins">${s.inputs.map(i => {
     const act = multi ? a.active === i.n : inV(i); // one input: active while its voltage is there
-    return `<div class="in${act ? ' act' : ''}${inOK(i) ? '' : ' fail'}">ввод ${i.n}${act ? ' · активен' : ''}<b>${i.present || i.v > 0 ? fx(i.v, 0) : '—'} В</b></div>`;
+    const there = i.present || i.v > 0, v = `${there ? fx(i.v, 0) : '—'} В`;
+    // the power; on a wide tile the voltage next to it; no power from the device: the voltage only
+    const val = H['input.w'] ? `${there ? fmtW(i.w) : '—'}<span class="iv"> · ${v}</span>` : v;
+    return `<div class="in${act ? ' act' : ''}${inOK(i) ? '' : ' fail'}">ввод ${i.n}${act ? ' · активен' : ''}<b>${val}</b></div>`;
   }).join('')}</div>` : '';
   const outs = s.outlets, ow = outs.reduce((x, o) => x + o.w, 0);
-  // the dot: grey no answer, orange an input is lost (or on the backup), yellow the device tells an alarm, green all fine
-  const inLost = H.ats && (onBackup || s.inputs.some(i => !inV(i)));
-  const [dc, dt, sn] = !fresh ? ['off', 'не отвечает', 'Недоступно'] : inLost ? ['bad', onBackup ? 'работа от резервного ввода' : 'пропал ввод', 'Авария'] : alarms.length ? ['warn', 'авария устройства: ' + alarms.join(', '), 'Внимание'] : ['ok', 'всё в порядке', 'Норма'];
+  const [dc, dt, sn] = statusOf(s);
   return `<a class="dev${fresh ? '' : ' stale'}" data-id="${esc(s.id)}" href="/device.html?${new URLSearchParams({ dev: s.id })}">
     <div class="h"><span class="dot ${dc}" title="${dt}"></span><b title="${esc(sy.name || s.id)}">${esc(sy.name || s.id)}</b><span class="st ${dc}" title="${esc(dt)}">[${sn}]</span><span class="ebtn admin-only" data-edit="${esc(s.id)}" title="группа">✎</span><span class="go">›</span></div>
     <div class="model">${s.kind ? `<span class="kind">${esc(s.kind)}</span>` : ''}${pr ? esc(pr.vendor + ' ' + pr.model) : 'модель не определена'}${sy.model && pr && sy.model !== pr.model ? ' · ' + esc(sy.model) : ''}</div>
@@ -237,10 +256,20 @@ function render() {
   const ks = $('kind');
   if (ks.dataset.html !== kh) { const v = ks.value; ks.innerHTML = kh; ks.dataset.html = kh; ks.value = kinds.includes(v) ? v : ''; }
   ks.classList.toggle('on', !!ks.value);
-  const words = $('q').value.trim().toLowerCase().split(/\s+/).filter(Boolean), kind = ks.value;
+  const vendor = d => (d.profile && d.profile.vendor) || '';
+  const vends = [...new Set(all.map(vendor).filter(Boolean))].sort((x, y) => x.localeCompare(y, 'ru'));
+  const vh = '<option value="">все производители</option>' + vends.map(k => `<option value="${esc(k)}">${esc(k)}</option>`).join('');
+  const vs = $('vend');
+  if (vs.dataset.html !== vh) { const v = vs.value; vs.innerHTML = vh; vs.dataset.html = vh; vs.value = vends.includes(v) ? v : ''; }
+  vs.classList.toggle('on', !!vs.value);
+  const ss = $('stat');
+  if (!ss.dataset.html) { ss.innerHTML = '<option value="">все статусы</option>' + STATUSES.map(k => `<option value="${k}">${k}</option>`).join(''); ss.dataset.html = '1'; }
+  ss.classList.toggle('on', !!ss.value);
+  const stat = ss.value;
+  const words = $('q').value.trim().toLowerCase().split(/\s+/).filter(Boolean), kind = ks.value, vend = vs.value;
   const hay = d => { const sy = d.system || {}, pr = d.profile || {}; return [d.id, d.host, d.kind, sy.name, sy.model, sy.serial, sy.location, sy.firmware, pr.vendor, pr.model, pr.title, groups[d.id]].join(' ').toLowerCase(); };
-  const filtering = !!(kind || words.length);
-  const pass = d => (!kind || d.kind === kind) && words.every(w => hay(d).includes(w));
+  const filtering = !!(kind || vend || stat || words.length);
+  const pass = d => (!kind || d.kind === kind) && (!vend || vendor(d) === vend) && (!stat || statusOf(d)[2] === stat) && words.every(w => hay(d).includes(w));
   const fby = new Map([...by].map(([n, l]) => [n, l.filter(pass)]));
   // the tiles: on "Все" by groups with a heading (when there are groups), else the one group
   const secs = (tab === '*' ? [...names, ''] : [tab]).filter(n => fby.has(n) && fby.get(n).length);
@@ -266,6 +295,8 @@ async function poll() {
 
 $('q').addEventListener('input', render);
 $('kind').addEventListener('change', render);
+$('vend').addEventListener('change', render);
+$('stat').addEventListener('change', render);
 $('q').addEventListener('keydown', e => { if (e.key === 'Escape') { $('q').value = ''; render(); } });
 // the tabs: open one, "+" makes a group (empty until a device is put there: kept in this browser)
 $('tabs').addEventListener('click', e => {
