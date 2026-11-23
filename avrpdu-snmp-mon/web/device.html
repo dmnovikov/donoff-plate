@@ -167,7 +167,7 @@ async function poll() {
 }
 
 const CAPS = { 'input.v': 'напряжение фаз', 'input.hz': 'частота фаз', 'input.ma': 'ток фаз', 'input.w': 'мощность фаз', 'input.kwh': 'энергия фаз',
-  'input.inverted': 'контроль фазы', 'ats.active': 'активная фаза', 'ats.priority': 'приоритетная фаза', 'ats.ground': 'контроль земли',
+  'input.inverted': 'контроль фазы', 'ats.active': 'активный ввод', 'ats.priority': 'приоритетный ввод', 'ats.ground': 'контроль земли',
   'outlet.on': 'состояние розеток', 'outlet.ma': 'ток розеток', 'outlet.w': 'мощность розеток', 'outlet.va': 'полная мощность', 'outlet.var': 'реактивная мощность',
   'outlet.kwh': 'энергия розеток', 'switch': 'включение и выключение розеток', 'system.temp': 'температура' };
 let aboutKey = '';
@@ -188,11 +188,11 @@ function renderAbout(s) {
       <span>адрес</span><span>${esc(s.host)} · SNMP v2c</span>
       ${sy.object_id ? `<span>sysObjectID</span><span>${esc(sy.object_id)}</span>` : ''}
       <span>профиль</span><span>${esc(pr.id)}</span>
-      <span>фаз / розеток</span><span>${s.inputs.length} / ${s.outlets.length}</span>
+      <span>${H['ats.active'] && s.inputs.length > 1 ? 'вводов' : 'фаз'} / розеток</span><span>${s.inputs.length} / ${s.outlets.length}</span>
       <span>управление</span><span>${ctl.length ? 'розетка ' + ctl.join(', ') + ' — только во вкладке «Автоматизация»' : 'выключено, только чтение'}</span>
       ${(pr.links || []).map(l => `<span>ссылка</span><span><a href="${esc(l)}" target="_blank" rel="noopener">${esc(l)}</a></span>`).join('')}
     </div>
-    <div class="caps">${Object.keys(CAPS).filter(k => H[k]).map(k => `<span>${CAPS[k]}</span>`).join('')}</div>`;
+    <div class="caps">${Object.keys(CAPS).filter(k => H[k]).map(k => `<span>${H['ats.active'] && s.inputs.length > 1 ? CAPS[k].replace(/ фаз$/, ' вводов') : CAPS[k]}</span>`).join('')}</div>`;
 }
 
 function render() {
@@ -222,8 +222,8 @@ function render() {
   const ins = s.inputs.map(i => {
     const ok = inOK(i), act = multi ? a.active === i.n : i.present === 1 && i.v > 0; // one input: while its voltage is there
     return `<div class="inp${act ? ' active' : ''}${ok ? '' : ' fail'}">
-      <h3>Фаза ${i.n} <small>${[role(i.n), esc(i.name)].filter(Boolean).join(' · ')}</small>
-        ${act ? '<span class="pill act">активна</span>' : multi ? '<span class="pill off">в резерве</span>' : ''}
+      <h3>${multi ? 'Ввод' : 'Фаза'} ${i.n} <small>${[role(i.n), esc(i.name)].filter(Boolean).join(' · ')}</small>
+        ${act ? '<span class="pill act">' + (multi ? 'активен' : 'активна') + '</span>' : multi ? '<span class="pill off">в резерве</span>' : ''}
         ${ok ? '' : '<span class="pill bad">не в норме</span>'}</h3>
       ${big(i)}
       <div class="kv">
@@ -233,18 +233,18 @@ function render() {
         ${H['input.vmin'] || H['input.vmax'] ? `<span>допуск</span><span>${i.vmin || '?'}–${i.vmax || '?'} В</span>` : ''}
         ${H['input.inverted'] ? `<span>фаза</span><span>${i.inverted ? '<span class="bad-t">перепутана</span>' : 'в норме'}</span>` : ''}
         ${(i.alarms || []).length ? `<span>авария</span><span class="bad-t">${esc(i.alarms.join(', '))}</span>` : ''}
-      </div><a class="hb" href="/history.html?${dq({ what: 'ats' })}" title="графики фаз">${!H['input.w'] ? spark(`in${i.n}.v`, 'В', 0) : multi ? spark(`in${i.n}.w`, 'Вт', 0, 'мощность') + spark(`in${i.n}.v`, 'В', 0, 'напряжение') : spark(`in${i.n}.w`, 'Вт', 0)}</a></div>`;
+      </div><a class="hb" href="/history.html?${dq({ what: 'ats' })}" title="графики ${multi ? 'вводов' : 'фаз'}">${!H['input.w'] ? spark(`in${i.n}.v`, 'В', 0) : multi ? spark(`in${i.n}.w`, 'Вт', 0, 'мощность') + spark(`in${i.n}.v`, 'В', 0, 'напряжение') : spark(`in${i.n}.w`, 'Вт', 0)}</a></div>`;
   }).join('');
   const tw = s.inputs.reduce((x, i) => x + i.w, 0), tk = s.inputs.reduce((x, i) => x + i.kwh, 0);
   const onBackup = a.active && a.active !== s.main;
   $('ats').className = 'card' + (fresh ? '' : ' stale');
   $('ats').innerHTML = `<div class="top"><h2>${esc(s.profile.ats_title || 'АВР')}</h2>
-      ${multi && a.active ? `<span class="pill ${onBackup ? 'bad' : 'act'}">работает от фазы ${a.active}${onBackup ? ' (резерв)' : ''}</span>` : ''}
+      ${multi && a.active ? `<span class="pill ${onBackup ? 'bad' : 'act'}">работает от ввода ${a.active}${onBackup ? ' (резерв)' : ''}</span>` : ''}
       ${!H['ats.ground'] ? '' : a.ground === 1 ? '<span class="pill on">земля в норме</span>' : '<span class="pill bad">нет земли</span>'}
       ${(s.alarms || []).map(x => `<span class="pill bad">${esc(x)}</span>`).join('')}</div>
     <div class="inputs">${ins}</div>
     <div class="sum">${H['input.w'] ? `<span>текущая мощность <b>${fx(tw, 0)} Вт</b></span>` : ''}${H['input.kwh'] ? `<span>энергия всего <b>${fx(tk, 3)} кВт·ч</b></span>` : ''}
-      ${H['ats.priority'] ? `<span>приоритетная фаза <b>${a.priority || 'нет'}</b></span>` : ''}${H['ats.failback'] ? `<span>возврат на приоритетную <b>${a.failback ? 'вкл' : 'выкл'}</b></span>` : ''}</div>`;
+      ${H['ats.priority'] ? `<span>приоритетный ввод <b>${a.priority || 'нет'}</b></span>` : ''}${H['ats.failback'] ? `<span>возврат на приоритетный <b>${a.failback ? 'вкл' : 'выкл'}</b></span>` : ''}</div>`;
 
   const outs = s.outlets, ctlN = outs.filter(o => o.ctl).map(o => o.n);
   $('foot').textContent = ctlN.length ? `здесь только чтение по SNMP; розеткой ${ctlN.join(', ')} управляют во вкладке «Автоматизация»` : 'только чтение по SNMP: управление выключено';
