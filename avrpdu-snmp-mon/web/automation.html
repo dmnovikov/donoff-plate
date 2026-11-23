@@ -140,14 +140,14 @@ function journal(d) {
 function tile(d) {
   const run = d.run, ready = !d.why.length;
   const st = run ? ['идёт', 'warn'] : ready ? ['готова', 'ok'] : ['не готова', 'off'];
-  const ins = (d.inputs || []).map(i => `<span>ввод ${i.n} ${esc(d.ats)}</span><span><span class="dot ${i.present ? 'ok' : 'bad'}"></span>${i.present ? Math.round(i.v) + ' В' : 'нет'}</span>`).join('');
+  const ins = (d.inputs || []).map(i => `<span>фаза ${i.n} ${esc(d.ats)}</span><span><span class="dot ${i.present ? 'ok' : 'bad'}"></span>${i.present ? Math.round(i.v) + ' В' : 'нет'}</span>`).join('');
   let body = `<div class="kv">${ins}
     <span>розетка ${d.start.outlet} ${esc(d.start.dev)}</span><span class="orow">${onOff(d.start_on)} <small>· старт</small>${swBtn(d.start, d.start_on)}</span>
     <span>розетка ${d.ups.outlet} ${esc(d.ups.dev)}</span><span class="orow">${onOff(d.ups_on)} <small>· «ИБП»</small>${swBtn(d.ups, d.ups_on)}</span>
     <span>предел</span><span>${run ? dur(run.max_min * 60) : Math.round(d.max_min) + ' мин по умолчанию'}</span></div>`;
   if (run) {
     const el = (Date.now() + skew - new Date(run.start)) / 1000;
-    body += `<div class="timer" data-start="${esc(run.start)}">${clock(el)}<small>ждём пропажи ввода · запустил ${esc(run.by)}</small></div>
+    body += `<div class="timer" data-start="${esc(run.start)}">${clock(el)}<small>ждём пропажи фазы · запустил ${esc(run.by)}</small></div>
       <div class="act"><button class="btn stop" data-stop="${esc(d.id)}">Стоп</button><span class="note">Стоп — тренировка неудачна, розетки вернутся.</span></div>`;
   } else {
     const mx = limits[d.id] || Math.round(d.max_min);
@@ -216,7 +216,7 @@ $('tiles').addEventListener('click', async e => {
   err.textContent = '';
   if (b.dataset.go) {
     const mx = Number(document.querySelector(`[data-max="${CSS.escape(id)}"]`).value) || d.max_min;
-    if (!confirm(`${d.title}\n\nБудет ВКЛЮЧЕНА розетка ${d.start.outlet} на ${d.start.dev}, пойдёт отсчёт.\nОтсчёт кончится, когда пропадёт ввод ${d.ats} (или через ${mx} мин).\nПосле этого розетка ${d.start.outlet} ${d.start.dev} выключится, розетка ${d.ups.outlet} ${d.ups.dev} включится.\n\nНачать?`)) return;
+    if (!confirm(`${d.title}\n\nБудет ВКЛЮЧЕНА розетка ${d.start.outlet} на ${d.start.dev}, пойдёт отсчёт.\nОтсчёт кончится, когда пропадёт фаза ${d.ats} (или через ${mx} мин).\nПосле этого розетка ${d.start.outlet} ${d.start.dev} выключится, розетка ${d.ups.outlet} ${d.ups.dev} включится.\n\nНачать?`)) return;
     busy = true; b.disabled = true;
     try { await post('/api/drill/start', { id, max_min: mx }); } catch (x) { err.textContent = x.message; }
   } else {

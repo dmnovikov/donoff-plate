@@ -79,7 +79,7 @@ func TestElemyIPDU(t *testing.T) {
 	if g.Value.oid2(1, 0) != ".1.3.6.1.4.1.58833.1.4.1.6.2.1.6.1.0" || g.Unit.Map[15] != "°C" || !g.Status.alarm(2) || g.Status.alarm(1) {
 		t.Errorf("sensor oid %s unit %q", g.Value.oid2(1, 0), g.Unit.Map[15])
 	}
-	if p.OutletItem != "группа" || p.ATSTitle != "Ввод питания" || all["rcntec-rpcm"].ATSTitle != "АВР" {
+	if p.OutletItem != "группа" || p.ATSTitle != "Фаза питания" || all["rcntec-rpcm"].ATSTitle != "АВР" {
 		t.Errorf("titles %q %q", p.OutletItem, p.ATSTitle)
 	}
 }

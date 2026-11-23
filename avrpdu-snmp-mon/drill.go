@@ -174,11 +174,11 @@ func (d *drill) checks() []string {
 		why = append(why, "нет связи с "+d.conf.ATS)
 	} else {
 		if len(a.Inputs) < 2 {
-			why = append(why, d.conf.ATS+": меньше двух вводов")
+			why = append(why, d.conf.ATS+": меньше двух фаз")
 		}
 		for _, in := range a.Inputs {
 			if !inputOK(in) {
-				why = append(why, fmt.Sprintf("ввод %d не в норме", in.N))
+				why = append(why, fmt.Sprintf("фаза %d не в норме", in.N))
 			}
 		}
 	}
@@ -270,7 +270,7 @@ func (d *drill) watch(r *DrillRun, limit time.Duration, stop chan string) {
 		a := d.ats.p.snapshot()
 		for _, in := range a.Inputs {
 			if inputLost(in) {
-				result, reason, r.Input = "ok", fmt.Sprintf("пропал ввод %d", in.N), in.N
+				result, reason, r.Input = "ok", fmt.Sprintf("пропала фаза %d", in.N), in.N
 				break
 			}
 		}
@@ -289,7 +289,7 @@ func (d *drill) watch(r *DrillRun, limit time.Duration, stop chan string) {
 			break
 		}
 		if now.Sub(t0) >= limit {
-			result, reason = "timeout", fmt.Sprintf("превышен предел %s: ввод не пропал", limit)
+			result, reason = "timeout", fmt.Sprintf("превышен предел %s: фаза не пропала", limit)
 		}
 	}
 	end := time.Now()

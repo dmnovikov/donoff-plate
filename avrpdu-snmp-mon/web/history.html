@@ -111,7 +111,7 @@ const RANGES = [['15m', '15 мин'], ['30m', '30 мин'], ['1h', '1 ч'], ['6h
 const q = new URLSearchParams(location.search), what = q.get('what') === 'outlet' ? 'outlet' : 'ats', n = q.get('n') || '', dev = q.get('dev') || '';
 document.getElementById('back').href = '/device.html?' + new URLSearchParams({ dev });
 let range = q.get('range') || '30m', hist = null, timer = 0;
-$('title').textContent = (dev ? dev + ": " : "") + (what === "outlet" ? `выход ${n}` : "вводы АВР"); document.title = $("title").textContent;
+$('title').textContent = (dev ? dev + ": " : "") + (what === "outlet" ? `выход ${n}` : "фазы АВР"); document.title = $("title").textContent;
 document.title = $('title').textContent + ' — графики';
 function segs() {
   $('range').innerHTML = RANGES.map(([k, t]) => `<button data-r="${k}"${k === range ? ' class="cur"' : ''}>${t}</button>`).join('');
@@ -137,14 +137,14 @@ const block = (title, items) => `<h3>${title}</h3>` + (items.length > 1 ? `<div 
 function draw() {
   const h = hist, o = { from: h.from, to: h.to, step: h.step, long: h.to - h.from > 86400 * 1.5 };
   if (what === 'ats') {
-    const two = k => [{ name: 'ввод 1', color: 'var(--t1)', pts: ser('in1.' + k) }, { name: 'ввод 2', color: 'var(--t2)', pts: ser('in2.' + k) }].filter(s => s.pts.length);
-    const v = two('v'), hz = two('hz'), w = two('w'), act = [{ name: 'активный ввод', color: 'var(--relay)', pts: ser('ats.active') }].filter(s => s.pts.length);
+    const two = k => [{ name: 'фаза 1', color: 'var(--t1)', pts: ser('in1.' + k) }, { name: 'фаза 2', color: 'var(--t2)', pts: ser('in2.' + k) }].filter(s => s.pts.length);
+    const v = two('v'), hz = two('hz'), w = two('w'), act = [{ name: 'активная фаза', color: 'var(--relay)', pts: ser('ats.active') }].filter(s => s.pts.length);
     if (!v.length && !w.length && !act.length) { $('charts').innerHTML = '<div class="msg">данных пока нет: точки пишутся раз в 10 с</div>'; return; }
-    $('charts').innerHTML = block('Активный ввод <small>от какого ввода работает нагрузка</small>', act) + '<div class="chart" id="ca"></div>'
+    $('charts').innerHTML = block('Активная фаза <small>от какой фазы работает нагрузка</small>', act) + '<div class="chart" id="ca"></div>'
       + block('Мощность, Вт', w) + '<div class="chart" id="cw"></div>'
       + block('Напряжение, В', v) + '<div class="chart" id="cv"></div>'
       + block('Частота, Гц', hz) + '<div class="chart" id="ch"></div>';
-    chart($('ca'), act, { ...o, h: 110, unit: '', dec: 0, y0: 0.6, y1: 2.4, ticks: [1, 2], state: true, tipFmt: v => 'ввод ' + Math.round(v) });
+    chart($('ca'), act, { ...o, h: 110, unit: '', dec: 0, y0: 0.6, y1: 2.4, ticks: [1, 2], state: true, tipFmt: v => 'фаза ' + Math.round(v) });
     chart($('cv'), v, { ...o, h: 220, unit: ' В', dec: 0, minSpan: 10 });
     chart($('ch'), hz, { ...o, h: 160, unit: ' Гц', dec: 2, minSpan: 0.2 });
     chart($('cw'), w, { ...o, h: 180, unit: ' Вт', dec: 0, minSpan: 5 });
@@ -167,8 +167,8 @@ function draw() {
     if (!a.length && !w.length) { $('charts').innerHTML = '<div class="msg">данных пока нет</div>'; return; }
     $('charts').innerHTML = block('Ток, мА', a) + '<div class="chart" id="oa"></div>'
       + block('Мощность', w) + '<div class="chart" id="ow"></div>'
-      + block('Напряжение, В <small>на активном вводе: своего замера на выходах нет</small>', v) + '<div class="chart" id="ov"></div>'
-      + block('Частота, Гц <small>на активном вводе</small>', hz) + '<div class="chart" id="oh"></div>';
+      + block('Напряжение, В <small>на активной фазе: своего замера на выходах нет</small>', v) + '<div class="chart" id="ov"></div>'
+      + block('Частота, Гц <small>на активной фазе</small>', hz) + '<div class="chart" id="oh"></div>';
     chart($('oa'), a, { ...o, h: 200, unit: ' мА', dec: 0, minSpan: 20 });
     chart($('ow'), w, { ...o, h: 200, unit: '', dec: 1, minSpan: 5 });
     chart($('ov'), v, { ...o, h: 160, unit: ' В', dec: 0, minSpan: 10 });

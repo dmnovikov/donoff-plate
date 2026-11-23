@@ -61,6 +61,7 @@ main { flex: 1 0 auto; width: 100%; max-width: 1400px; margin: 0 auto; padding: 
 .pills { display: flex; flex-wrap: wrap; gap: 4px 6px; margin-top: 8px; }
 .pill { display: inline-flex; padding: 1px 10px; border-radius: 999px; font-size: 12px; font-weight: 700; border: 1.5px solid currentColor; white-space: nowrap; }
 .pill.act { color: var(--ok); } .pill.bad { color: var(--bad); } .pill.warn { color: var(--warn); } .pill.off { color: var(--muted); }
+.pill.long { display: block; max-width: 100%; white-space: normal; overflow-wrap: anywhere; border-radius: 10px; font-weight: 600; }
 .msg { color: var(--muted); padding: 20px 0; text-align: center; font-size: 13px; }
 .msg.err { color: var(--bad); }
 header { padding-bottom: 0; }
@@ -119,7 +120,7 @@ footer .by { margin-top: 2px; font-size: 11px; letter-spacing: .02em; }
   <h1>АВР и PDU</h1>
   <span class="meta" id="meta">подключение…</span>
   <span class="flt"><select id="kind" title="тип устройства"><option value="">все типы</option></select><select id="vend" title="производитель"><option value="">все производители</option></select><select id="stat" title="статус"><option value="">все статусы</option></select><input type="search" id="q" placeholder="поиск: имя, адрес, модель…" title="ищет по имени, id, адресу, модели, производителю, месту, серийному номеру и группе; несколько слов — все должны быть"></span>
-  <span class="legend"><span title="всё в порядке"><i class="dot ok"></i>Норма</span><span title="устройство сообщает об аварии (датчик, розетка, само устройство)"><i class="dot warn"></i>Внимание</span><span title="пропал ввод или работа от резервного ввода"><i class="dot bad"></i>Авария</span><span title="не отвечает по SNMP"><i class="dot off"></i>Недоступно</span></span>
+  <span class="legend"><span title="всё в порядке"><i class="dot ok"></i>Норма</span><span title="устройство сообщает об аварии (датчик, розетка, само устройство)"><i class="dot warn"></i>Внимание</span><span title="пропала фаза или работа от резервной фазы"><i class="dot bad"></i>Авария</span><span title="не отвечает по SNMP"><i class="dot off"></i>Недоступно</span></span>
   <button class="gear admin-only" id="gear" title="настройки: группы">⚙</button>
   <nav class="tabs" id="tabs"></nav>
 </header>
@@ -159,7 +160,7 @@ function statusOf(s) {
   const a = s.ats, multi = H['ats.active'] && s.inputs.length > 1, onBackup = multi && a.active && a.active !== s.main;
   // grey no answer, orange an input is lost (or on the backup), yellow the device tells an alarm, green all fine
   const inLost = H.ats && (onBackup || s.inputs.some(i => !inV(i)));
-  return !isFresh(s) ? ['off', 'не отвечает', 'Недоступно'] : inLost ? ['bad', onBackup ? 'работа от резервного ввода' : 'пропал ввод', 'Авария'] : alarms.length ? ['warn', 'авария устройства: ' + alarms.join(', '), 'Внимание'] : ['ok', 'всё в порядке', 'Норма'];
+  return !isFresh(s) ? ['off', 'не отвечает', 'Недоступно'] : inLost ? ['bad', onBackup ? 'работа от резервной фазы' : 'пропала фаза', 'Авария'] : alarms.length ? ['warn', 'авария устройства: ' + alarms.join(', '), 'Внимание'] : ['ok', 'всё в порядке', 'Норма'];
 }
 
 function tile(s) {
@@ -174,7 +175,7 @@ function tile(s) {
     const there = i.present || i.v > 0, v = `${there ? fx(i.v, 0) : '—'} В`;
     // the power; on a wide tile the voltage next to it; no power from the device: the voltage only
     const val = H['input.w'] ? `${there ? fmtW(i.w) : '—'}<span class="iv"> · ${v}</span>` : v;
-    return `<div class="in${act ? ' act' : ''}${inOK(i) ? '' : ' fail'}">ввод ${i.n}${act ? ' · активен' : ''}<b>${val}</b></div>`;
+    return `<div class="in${act ? ' act' : ''}${inOK(i) ? '' : ' fail'}">фаза ${i.n}${act ? ' · активна' : ''}<b>${val}</b></div>`;
   }).join('')}</div>` : '';
   const outs = s.outlets, ow = outs.reduce((x, o) => x + o.w, 0);
   const [dc, dt, sn] = statusOf(s);
@@ -192,9 +193,9 @@ function tile(s) {
     </div>
     ${ins}
     <div class="pills">
-      ${multi && a.active ? `<span class="pill ${onBackup ? 'bad' : 'act'}">от ввода ${a.active}${onBackup ? ' (резерв)' : ''}</span>` : ''}
+      ${multi && a.active ? `<span class="pill ${onBackup ? 'bad' : 'act'}">от фазы ${a.active}${onBackup ? ' (резерв)' : ''}</span>` : ''}
       ${alarms.map(x => `<span class="pill warn">${esc(x)}</span>`).join('')}
-      ${fresh ? '' : `<span class="pill bad">${esc(s.error || 'не отвечает')}</span>`}
+      ${fresh ? '' : `<span class="pill bad long">${esc(s.error || 'не отвечает')}</span>`}
     </div></a>`;
 }
 
@@ -246,7 +247,7 @@ function render() {
     const off = k !== ARCH && list.some(d => !isFresh(d));
     return `<button class="tab${k === tab ? ' on' : ''}${k === ARCH ? ' arch' : ''}" data-g="${esc(k)}" title="${esc(label)}"><span class="tn">${esc(label)}</span><span class="n">${list.length}</span>${off ? '<span class="off" title="есть устройства без связи"></span>' : ''}</button>`;
   }).join('') + '<button class="tab add admin-only" data-g="+" title="новая группа">+</button>'
-    + '<a class="tab auto admin-only" href="/automation.html" title="автоматизация: правила для розеток и вводов (только admin)"><span class="tn">⚡ Автоматизация</span></a>';
+    + '<a class="tab auto admin-only" href="/automation.html" title="автоматизация: правила для розеток и фаз (только admin)"><span class="tn">⚡ Автоматизация</span></a>';
   if ($('tabs').dataset.html !== th) { $('tabs').innerHTML = th; $('tabs').dataset.html = th; }
   if (!$('sett').hidden) fillSettings();
   if (!$('ed').hidden) fillEd();
