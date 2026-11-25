@@ -66,7 +66,7 @@ main { max-width: 1200px; margin: 0 auto; padding: 12px 16px 24px; }
   <h1 id="dev"></h1>
   <select id="sensor" hidden></select>
   <span class="seg" id="range"><button data-r="1m">1 мин</button><button data-r="5m">5 мин</button><button data-r="15m">15 мин</button><button data-r="1h">1 ч</button><button data-r="6h">6 ч</button><button data-r="24h">24 ч</button><button data-r="7d">7 дн</button><button data-r="30d">30 дн</button></span>
-  <button class="hb" id="dots" title="точки вместо линии: видно каждое измерение и пропуски">точки</button>
+  <span class="seg" id="mode"><button data-m="" title="обычный вид: измерения соединены линией, на пропуске линия рвётся">линия</button><button data-m="dots" title="точки вместо линии: видно каждое измерение и пропуски">точки</button><button data-m="bars" title="столбик на каждый шаг: видно, где данные есть, а где пропуск">столбики</button></span>
   <span class="zinfo" id="zinfo" hidden><span id="zspan"></span> <button class="hb" id="zback" title="на шаг назад (или двойной щелчок по графику)">← назад</button><button class="hb" id="zreset">сбросить зум</button></span>
 </header>
 <main id="body"><div class="msg">загрузка…</div></main>
@@ -78,7 +78,8 @@ const dev = q.get('dev') || '';
 let range = q.get('range') || '1h', sensor = q.get('sensor') || '', data = null, timer = 0;
 // zoom: {from, to} in unix seconds, picked by dragging over a chart; zstack: the zooms before it, for "назад"
 let zoom = +q.get('from') && +q.get('to') ? { from: +q.get('from'), to: +q.get('to') } : null; const zstack = [];
-let dots = q.get('dots') === '1';
+// mode: '' = a line, 'dots' = every measurement apart, 'bars' = a bar per step (the filling is seen)
+let mode = ['dots', 'bars'].includes(q.get('mode')) ? q.get('mode') : q.get('dots') === '1' ? 'dots' : '';
 $('dev').textContent = dev; document.title = dev + ' — графики';
 
 const fmtDur = s => { s = Math.round(s / 60); const d = Math.floor(s / 1440), h = Math.floor(s % 1440 / 60), m = s % 60;
@@ -90,11 +91,12 @@ const rangeName = { '1m': '1 минуту', '5m': '5 минут', '15m': '15 м�
 
 function setUrl() {
   const u = new URLSearchParams({ dev, range }); if (sensor) u.set('sensor', sensor);
-  if (zoom) { u.set('from', zoom.from); u.set('to', zoom.to); } if (dots) u.set('dots', '1');
+  if (zoom) { u.set('from', zoom.from); u.set('to', zoom.to); } if (mode) u.set('mode', mode);
   history.replaceState(null, '', '/history?' + u);
 }
 $('range').onclick = e => { const b = e.target.closest('button'); if (b) { range = b.dataset.r; zoom = null; zstack.length = 0; setUrl(); load(); } };
-$('dots').onclick = () => { dots = !dots; setUrl(); if (data) draw(); else load(); };
+$('mode').onclick = e => { const b = e.target.closest('button'); if (!b) return; mode = b.dataset.m; setUrl(); markMode(); if (data) draw(); };
+function markMode() { [...$('mode').children].forEach(b => b.classList.toggle('cur', b.dataset.m === mode)); }
 $('zreset').onclick = () => { zoom = null; zstack.length = 0; setUrl(); load(); };
 $('zback').onclick = zoomBack;
 function zoomBack() { if (!zoom) return; zoom = zstack.pop() || null; setUrl(); load(); }
@@ -109,7 +111,7 @@ $('sensor').onchange = e => { sensor = e.target.value; setUrl(); draw(); };
 
 async function load() {
   [...$('range').children].forEach(b => b.classList.toggle('cur', !zoom && b.dataset.r === range));
-  $('dots').classList.toggle('cur', dots);
+  markMode();
   $('zinfo').hidden = !zoom;
   if (zoom) { const lg = zoom.to - zoom.from > 86400 * 1.5 || new Date(zoom.from * 1000).toDateString() !== new Date().toDateString();
     $('zspan').textContent = `${fmtT(zoom.from, lg, !lg && zoom.to - zoom.from < 1800)} – ${fmtT(zoom.to, lg, !lg && zoom.to - zoom.from < 1800)}`; }
@@ -218,7 +220,10 @@ function chart(box, series, o) {
         let d = ''; for (const p of sg) d += `${d ? 'L' : 'M'}${x(p[0] - o.step).toFixed(1)},${y(p[1]).toFixed(1)}L${x(p[0]).toFixed(1)},${y(p[1]).toFixed(1)}`;
         g += `<path d="${d}L${x(sg[sg.length - 1][0])},${y(0)}L${x(sg[0][0] - o.step)},${y(0)}Z" fill="${s.color}" fill-opacity=".3"/>`;
         g += `<path d="${d}" fill="none" stroke="${s.color}" stroke-width="1.5" stroke-linejoin="round"/>`;
-      } else if (dots) g += sg.map(p => `<circle cx="${x(p[0]).toFixed(1)}" cy="${y(p[1]).toFixed(1)}" r="2" fill="${s.color}"/>`).join('');
+      } else if (mode === 'bars') {  // a bar per step, from the bottom of the chart: a step without data stays empty
+        g += sg.map(p => { const a = Math.max(L, x(p[0] - o.step)), w = Math.max(1, x(p[0]) - a - (x(p[0]) - a > 3 ? 1 : 0)), yy = Math.min(y(p[1]), H - B - 1);
+          return `<rect x="${a.toFixed(1)}" y="${yy.toFixed(1)}" width="${w.toFixed(1)}" height="${(H - B - yy).toFixed(1)}" fill="${s.color}" fill-opacity=".75"/>`; }).join('');
+      } else if (mode === 'dots') g += sg.map(p => `<circle cx="${x(p[0]).toFixed(1)}" cy="${y(p[1]).toFixed(1)}" r="2" fill="${s.color}"/>`).join('');
       else if (sg.length === 1) g += `<circle cx="${x(sg[0][0])}" cy="${y(sg[0][1])}" r="2.5" fill="${s.color}"/>`;
       else g += `<path d="${sg.map((p, i) => `${i ? 'L' : 'M'}${x(p[0]).toFixed(1)},${y(p[1]).toFixed(1)}`).join('')}" fill="none" stroke="${s.color}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>`;
     }
