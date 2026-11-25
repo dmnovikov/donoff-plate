@@ -104,3 +104,25 @@ func joinLines(l []string) string {
 	}
 	return s
 }
+
+func TestSpanStep(t *testing.T) {
+	for d, want := range map[time.Duration]time.Duration{
+		time.Minute:         5 * time.Second,
+		30 * time.Minute:    5 * time.Second,
+		time.Hour:           10 * time.Second,
+		6 * time.Hour:       time.Minute,
+		24 * time.Hour:      5 * time.Minute,
+		30 * 24 * time.Hour: 2 * time.Hour,
+	} {
+		if got := spanStep(d); got != want {
+			t.Errorf("spanStep(%v) = %v, want %v", d, got, want)
+		}
+	}
+	x := &Influx{}
+	if _, err := x.HistorySpan("d1", time.Unix(100, 0), time.Unix(110, 0)); err == nil {
+		t.Error("a span of 10 s must be refused")
+	}
+	if _, err := x.HistorySpan("d1", time.Unix(0, 0), time.Unix(40*86400, 0)); err == nil {
+		t.Error("a span of 40 days must be refused")
+	}
+}

@@ -250,21 +250,54 @@ func dur(d time.Duration) string {
 	return strconv.Itoa(int(d/time.Second)) + "s"
 }
 
+// spanSteps: the steps a zoomed chart may have; the smallest one that keeps it under spanPoints points
+var spanSteps = []time.Duration{5 * time.Second, 10 * time.Second, 30 * time.Second, time.Minute, 2 * time.Minute,
+	5 * time.Minute, 10 * time.Minute, 30 * time.Minute, time.Hour, 2 * time.Hour}
+
+const (
+	spanPoints = 360
+	minSpan    = 30 * time.Second
+	maxSpan    = 31 * 24 * time.Hour
+)
+
+func spanStep(d time.Duration) time.Duration {
+	for _, st := range spanSteps {
+		if d/st <= spanPoints {
+			return st
+		}
+	}
+	return spanSteps[len(spanSteps)-1]
+}
+
+// History: one of the ranges of the page, ending now.
 func (x *Influx) History(dev, rng string) (*History, error) {
 	r, ok := ranges[rng]
 	if !ok {
 		return nil, errors.New("range: 1m, 5m, 15m, 1h, 6h, 24h, 7d or 30d")
 	}
+	to := time.Now().UTC()
+	return x.history(dev, rng, to.Add(-r.d), to, r.step)
+}
+
+// HistorySpan: any stretch of time (a zoom into a chart), the step follows its length.
+func (x *Influx) HistorySpan(dev string, from, to time.Time) (*History, error) {
+	d := to.Sub(from)
+	if d < minSpan || d > maxSpan {
+		return nil, errors.New("from..to: from 30 seconds to 31 days")
+	}
+	return x.history(dev, "", from.UTC(), to.UTC(), spanStep(d))
+}
+
+func (x *Influx) history(dev, rng string, from, to time.Time, step time.Duration) (*History, error) {
 	if !devRe.MatchString(dev) {
 		return nil, errors.New("bad device id")
 	}
-	to := time.Now().UTC()
-	h := &History{Dev: dev, Range: rng, From: to.Add(-r.d), To: to, Step: r.step.Seconds(), Temps: []Series{}, Others: []Series{}, Relays: []RelayHist{}}
+	h := &History{Dev: dev, Range: rng, From: from, To: to, Step: step.Seconds(), Temps: []Series{}, Others: []Series{}, Relays: []RelayHist{}}
 	base := fmt.Sprintf(`from(bucket: %q) |> range(start: %s, stop: %s) |> filter(fn: (r) => r.dev == %q)`,
 		x.Bucket, h.From.Format(time.RFC3339), to.Format(time.RFC3339), dev)
 	// -127 (no sensor) and -128 (not ready) are not readings: they must not get into the means
 	flux := base + ` |> filter(fn: (r) => r._measurement == "relay" or (r._measurement == "sensor" and r._value != -127.0 and r._value != -128.0))
-  |> aggregateWindow(every: ` + dur(r.step) + `, fn: mean, createEmpty: false)
+  |> aggregateWindow(every: ` + dur(step) + `, fn: mean, createEmpty: false)
   |> keep(columns: ["_time", "_value", "_measurement", "name"]) |> yield(name: "chart")
 on = ` + base + ` |> filter(fn: (r) => r._measurement == "relay")
   |> aggregateWindow(every: ` + dur(onStep) + `, fn: mean, createEmpty: false) |> keep(columns: ["_value", "name"])
@@ -319,7 +352,7 @@ on |> count() |> yield(name: "count")`
 	sort.Slice(h.Others, func(i, j int) bool { return h.Others[i].Name < h.Others[j].Name })
 	for _, s := range relays {
 		// the first and the last minute are cut by the range but counted whole: not more than the range
-		s.CoveredS = min(s.CoveredS, r.d.Seconds())
+		s.CoveredS = min(s.CoveredS, to.Sub(from).Seconds())
 		s.OnS = min(s.OnS, s.CoveredS)
 		sort.Slice(s.Pts, func(i, j int) bool { return s.Pts[i][0] < s.Pts[j][0] })
 		h.Relays = append(h.Relays, *s)

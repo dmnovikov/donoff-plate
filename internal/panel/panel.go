@@ -6,7 +6,7 @@
 //	GET  /api/v1/state     broker state and every device with its topics, answers (/out/info) and log
 //	POST /api/v1/cmd       {"dev": "dmzk10", "cmd": "r11"} -> /<user>/dmzk10/in/params
 //	GET  /history          ?dev=dmzk10: the page with the charts
-//	GET  /api/v1/history   ?dev=dmzk10&range=1m|5m|15m|1h|6h|24h|7d|30d: temperatures and relays from InfluxDB (with --influx)
+//	GET  /api/v1/history   ?dev=dmzk10&range=1m|5m|15m|1h|6h|24h|7d|30d (or from=&to= in unix seconds, a zoom): temperatures and relays from InfluxDB (with --influx)
 //	PUT  /api/v1/group     {"dev": "dmzk10", "group": "Теплицы"} ("" = no group); kept in the groups file
 //	POST /api/v1/group/rename {"from": "Теплицы", "to": "Теплицы 2"}: every device of the group moves, the order keeps its place
 //	POST /api/v1/group/delete {"name": "Теплицы"}: its devices are left without a group
@@ -863,7 +863,20 @@ func (h *Hub) Handler(trusted []netip.Prefix) http.Handler {
 			reply(w, 404, map[string]string{"error": "the panel runs without --influx"})
 			return
 		}
-		x, err := h.influx.History(r.URL.Query().Get("dev"), r.URL.Query().Get("range"))
+		q := r.URL.Query()
+		var x *History
+		var err error
+		if q.Has("from") || q.Has("to") { // a zoom: unix seconds
+			from, e1 := strconv.ParseInt(q.Get("from"), 10, 64)
+			to, e2 := strconv.ParseInt(q.Get("to"), 10, 64)
+			if e1 != nil || e2 != nil {
+				err = errors.New("from, to: unix seconds")
+			} else {
+				x, err = h.influx.HistorySpan(q.Get("dev"), time.Unix(from, 0), time.Unix(to, 0))
+			}
+		} else {
+			x, err = h.influx.History(q.Get("dev"), q.Get("range"))
+		}
 		if err != nil {
 			reply(w, 400, map[string]string{"error": err.Error()})
 			return
