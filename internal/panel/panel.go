@@ -6,7 +6,7 @@
 //	GET  /api/v1/state     broker state and every device with its topics, answers (/out/info) and log
 //	POST /api/v1/cmd       {"dev": "dmzk10", "cmd": "r11"} -> /<user>/dmzk10/in/params
 //	GET  /history          ?dev=dmzk10: the page with the charts
-//	GET  /api/v1/history   ?dev=dmzk10&range=15m|1h|6h|24h|7d|30d: temperatures and relays from InfluxDB (with --influx)
+//	GET  /api/v1/history   ?dev=dmzk10&range=1m|5m|15m|1h|6h|24h|7d|30d: temperatures and relays from InfluxDB (with --influx)
 //	PUT  /api/v1/group     {"dev": "dmzk10", "group": "Теплицы"} ("" = no group); kept in the groups file
 //	POST /api/v1/group/rename {"from": "Теплицы", "to": "Теплицы 2"}: every device of the group moves, the order keeps its place
 //	POST /api/v1/group/delete {"name": "Теплицы"}: its devices are left without a group
@@ -369,7 +369,9 @@ func (h *Hub) Start() {
 		SetOnConnectHandler(func(cl paho.Client) {
 			h.state(true, "")
 			log.Printf("mqtt: connected to %s as %s, listening %s+/out/#", h.st.Server, h.creds.User, prefix)
-			cl.Subscribe(prefix+"+/out/#", 0, func(_ paho.Client, m paho.Message) { h.onMessage(prefix, m.Topic(), string(m.Payload())) })
+			cl.Subscribe(prefix+"+/out/#", 0, func(_ paho.Client, m paho.Message) {
+				h.onMessageR(prefix, m.Topic(), string(m.Payload()), m.Retained())
+			})
 			cl.Subscribe(prefix+"+/in/#", 0, func(_ paho.Client, m paho.Message) {
 				if !m.Retained() { // a retained message is an old one, repeated on every subscribe
 					h.onCommand(prefix, m.Topic(), string(m.Payload()))
@@ -475,7 +477,12 @@ func cleanTopic(sub, v string) bool {
 	return true
 }
 
-func (h *Hub) onMessage(prefix, topic, payload string) {
+func (h *Hub) onMessage(prefix, topic, payload string) { h.onMessageR(prefix, topic, payload, false) }
+
+// onMessageR: retained = the broker repeats an old message on subscribe (out/status, out/meta), the device
+// did not say it now. "offline" in out/status is the Last Will, sent by the broker when the device is gone.
+// Neither means the device is alive, so they do not move LastSeen (a device never seen before gets it once).
+func (h *Hub) onMessageR(prefix, topic, payload string, retained bool) {
 	rest, ok := strings.CutPrefix(topic, prefix)
 	if !ok {
 		return
@@ -488,7 +495,9 @@ func (h *Hub) onMessage(prefix, topic, payload string) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	d := h.device(id)
-	d.LastSeen = now
+	if will := sub == "status" && strings.TrimSpace(payload) == "offline"; (!retained && !will) || d.LastSeen.IsZero() {
+		d.LastSeen = now
+	}
 	switch sub {
 	case "info":
 		key := paramKey(payload, d.lastAsk)
@@ -625,6 +634,7 @@ var (
 		{regexp.MustCompile(`^(lschm2|l2schm|schm2)=\d+$`), "lschm2"},
 		{regexp.MustCompile(`^aofs1?=\d+$`), "aofs1"},
 		{regexp.MustCompile(`^(aofs2|a2ofs)=\d+$`), "aofs2"},
+		{regexp.MustCompile(`^tsensor=\S+`), "tsensor"}, // donoff2: the value the thermostat follows
 	}
 	bitsAnswer = regexp.MustCompile(`^[01]{4}( [01]{4}){5}$`)
 )
@@ -662,6 +672,10 @@ func (h *Hub) pollCmds(id string) []string {
 		return cmds
 	}
 	cmds = append(cmds, "sh hotter", "sh cooler", "sh tls", "sh lschm", "sh aofs") // "lschm1" is not known to the old firmware
+	// out/meta: donoff2, it knows which value its thermostat follows
+	if _, ok := d.Topics["meta"]; ok {
+		cmds = append(cmds, "sh tsensor")
+	}
 	if nrel > 1 {
 		cmds = append(cmds, "sh lschm2", "sh aofs2")
 	}

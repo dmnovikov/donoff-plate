@@ -58,7 +58,7 @@ main { max-width: 1200px; margin: 0 auto; padding: 12px 16px 24px; }
   <a class="back" href="/">← Устройства</a>
   <h1 id="dev"></h1>
   <select id="sensor" hidden></select>
-  <span class="seg" id="range"><button data-r="15m">15 мин</button><button data-r="1h">1 ч</button><button data-r="6h">6 ч</button><button data-r="24h">24 ч</button><button data-r="7d">7 дн</button><button data-r="30d">30 дн</button></span>
+  <span class="seg" id="range"><button data-r="1m">1 мин</button><button data-r="5m">5 мин</button><button data-r="15m">15 мин</button><button data-r="1h">1 ч</button><button data-r="6h">6 ч</button><button data-r="24h">24 ч</button><button data-r="7d">7 дн</button><button data-r="30d">30 дн</button></span>
 </header>
 <main id="body"><div class="msg">загрузка…</div></main>
 <script>
@@ -74,7 +74,7 @@ const fmtDur = s => { s = Math.round(s / 60); const d = Math.floor(s / 1440), h 
 const fmtT = (t, long, sec) => new Date(t * 1000).toLocaleString('ru-RU', long
   ? { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }
   : sec ? { hour: '2-digit', minute: '2-digit', second: '2-digit' } : { hour: '2-digit', minute: '2-digit' });
-const rangeName = { '15m': '15 минут', '1h': '1 час', '6h': '6 часов', '24h': '24 часа', '7d': '7 дней', '30d': '30 дней' };
+const rangeName = { '1m': '1 минуту', '5m': '5 минут', '15m': '15 минут', '1h': '1 час', '6h': '6 часов', '24h': '24 часа', '7d': '7 дней', '30d': '30 дней' };
 
 function setUrl() {
   const u = new URLSearchParams({ dev, range }); if (sensor) u.set('sensor', sensor);
@@ -92,19 +92,17 @@ async function load() {
     if (!r.ok) throw new Error(j.error || r.statusText);
     data = j; draw();
   } catch (e) { $('body').innerHTML = `<div class="msg err">${esc(e.message)}</div>`; }
-  timer = setTimeout(load, ['15m', '1h'].includes(range) ? 15000 : 60000);
+  timer = setTimeout(load, ['1m', '5m'].includes(range) ? 5000 : ['15m', '1h'].includes(range) ? 15000 : 60000);
 }
 window.addEventListener('resize', () => data && draw());
 
-// temp_out (and temp_out2 on the same chart, when there is one); another sensor can be picked
+// Every temperature gets its own chart with its own scale: they can be of a different nature and range.
+// temp_out first, temp_in (the control sensor inside the board) last; ?sensor=<name> leaves only that one.
 function pickTemps(h) {
-  const names = h.temps.map(s => s.name), main = sensor || (names.includes('temp_out') ? 'temp_out' : names[0]);
-  const sel = $('sensor');
-  sel.hidden = names.length < 2;
-  sel.innerHTML = names.map(n => `<option${n === main ? ' selected' : ''}>${esc(n)}</option>`).join('');
-  const out = h.temps.filter(s => s.name === main);
-  if (main === 'temp_out') out.push(...h.temps.filter(s => s.name === 'temp_out2'));
-  return out.map((s, i) => ({ ...s, color: `var(--t${i + 1})` }));
+  const rank = n => n === 'temp_out' ? 0 : n === 'temp_in' ? 2 : 1;
+  $('sensor').hidden = true;
+  return h.temps.filter(s => !sensor || s.name === sensor).sort((a, b) => rank(a.name) - rank(b.name) || a.name.localeCompare(b.name))
+    .map(s => ({ ...s, color: 'var(--t1)' }));
 }
 // the other sensors by their unit: one chart per unit
 function unitOf(n) {
@@ -136,12 +134,12 @@ function draw() {
       <div class="q">${r.covered_s ? `из ${fmtDur(r.covered_s)} с данными` : 'данных нет'}</div></div>`;
   }).join('') + '</div>';
   const others = groupOthers(h.others || []);
-  if (ts.length || !others.length) html += seriesBox('ctemp', `Температура${ts.length === 1 ? ' ' + esc(ts[0].name) : ''}, °C`, ts);
+  ts.forEach((t, i) => { html += seriesBox(`ctemp${i}`, `Температура ${esc(t.name)}, °C`, [t]); });
+  if (!ts.length && !others.length) html += '<div class="box"><h2>Температура, °C</h2><div class="msg">нет данных за этот период</div></div>';
   h.relays.forEach((r, i) => { html += `<div class="box"><h2>Реле ${esc(r.name)} <small>доля времени во включённом состоянии, %</small></h2><div class="chart" id="crel${i}"></div></div>`; });
   others.forEach((g, i) => { html += seriesBox(`coth${i}`, `${esc(g.t)}${g.series.length === 1 && g.t !== g.series[0].name ? ' ' + esc(g.series[0].name) : ''}${g.u ? ', ' + g.u : ''}`, g.series); });
   $('body').innerHTML = html;
-  if (ts.length) chart($('ctemp'), ts, { from, to, step: h.step, long, h: 260, unit: ' °C', dec: 2, labels: ts.length > 1, minSpan: 0.5 });
-  else if ($('ctemp')) $('ctemp').innerHTML = '<div class="msg">нет данных за этот период</div>';
+  ts.forEach((t, i) => chart($(`ctemp${i}`), [t], { from, to, step: h.step, long, h: ts.length > 1 ? 200 : 260, unit: ' °C', dec: 2, minSpan: 0.5 }));
   others.forEach((g, i) => chart($(`coth${i}`), g.series, { from, to, step: h.step, long, h: 200, unit: g.u ? ' ' + g.u : '', dec: 2, labels: g.series.length > 1 }));
   h.relays.forEach((r, i) => chart($(`crel${i}`), [{ name: r.name, color: 'var(--relay)', pts: r.pts.map(p => [p[0], p[1] * 100]) }],
     { from, to, step: h.step, long, h: 110, unit: ' %', y0: 0, y1: 100, area: true, ticks: [0, 50, 100], dec: 0 }));
@@ -152,7 +150,7 @@ function niceTicks(lo, hi, n) {
   const out = []; for (let v = Math.ceil(lo / st - 1e-9) * st; v <= hi + 1e-9; v += st) out.push(+v.toFixed(6)); return out;
 }
 function timeTicks(from, to, width) {
-  const want = Math.max(2, Math.floor(width / 80)), opts = [60, 120, 300, 600, 900, 1800, 3600, 7200, 10800, 21600, 43200, 86400, 172800, 604800];
+  const want = Math.max(2, Math.floor(width / 80)), opts = [10, 15, 30, 60, 120, 300, 600, 900, 1800, 3600, 7200, 10800, 21600, 43200, 86400, 172800, 604800];
   const st = opts.find(x => (to - from) / x <= want) || 604800;
   const off = new Date().getTimezoneOffset() * 60, out = [];
   for (let t = Math.ceil((from - off) / st) * st + off; t <= to; t += st) out.push(t);
@@ -160,6 +158,7 @@ function timeTicks(from, to, width) {
 }
 function tickLabel(t) {
   const d = new Date(t * 1000);
+  if (t % 60) return fmtT(t, false, true);  // a tick inside a minute: with seconds
   return d.getHours() || d.getMinutes() ? fmtT(t) : d.toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit' });
 }
 

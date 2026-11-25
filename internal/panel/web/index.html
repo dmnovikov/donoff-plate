@@ -39,6 +39,8 @@ main { max-width: 1400px; margin: 0 auto; padding: 16px; }
 .kv > span:nth-child(odd) { color: var(--muted); }
 .kv > span { min-width: 0; overflow-wrap: anywhere; }
 .num { font-variant-numeric: tabular-nums; }
+/* a sensor value on the card: bold, orange when the sensor is missing (-127) */
+.sv { font-weight: 650; } .sv.none, .big.none { color: var(--bad); }
 .relays { display: grid; gap: 6px; margin-top: 10px; }
 .relay { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .relay .name { font-weight: 600; min-width: 34px; }
@@ -68,9 +70,21 @@ details.more > summary { font-size: 12px; }
 .msgs .out { color: var(--accent); }
 .msgs:empty { display: none; }
 .con { display: flex; gap: 6px; align-items: center; }
+/* the list of commands under the command line: a click puts the command into the line */
+.help { font-size: 12px; border: 1px solid var(--line); border-radius: 8px; padding: 6px 8px; margin: 4px 0; max-height: 320px; overflow-y: auto; }
+.help h4 { margin: 8px 0 3px; font-size: 12px; color: var(--muted); font-weight: 600; } .help h4:first-child { margin-top: 0; }
+.help .hr { display: grid; grid-template-columns: minmax(96px, auto) 1fr; gap: 2px 8px; align-items: baseline; }
+.help button { all: unset; cursor: pointer; font: 12px ui-monospace, SFMono-Regular, Menlo, monospace; color: var(--accent); }
+.help .n { color: var(--muted); margin-top: 6px; }
 .con .raw { flex: 1; min-width: 0; font: 13px ui-monospace, SFMono-Regular, Menlo, monospace; }
-.last { font: 12px/1.4 ui-monospace, SFMono-Regular, Menlo, monospace; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-height: 1.4em; }
-.last b { color: var(--text); font-weight: 500; }
+/* the command line and the answers look like a terminal: light on black in both themes */
+.term { background: #0b0d10; color: #e8eaed; border-radius: 8px; padding: 6px 8px; font: 12px/1.45 ui-monospace, SFMono-Regular, Menlo, monospace; }
+.term .tout { height: 4.35em; overflow-y: auto; white-space: pre-wrap; overflow-wrap: anywhere; margin-bottom: 4px; }
+.term .tout .tm { color: #7d8590; } .term .tout .tc { color: #ffffff; font-weight: 600; } .term .tout .te { color: #fb923c; }
+.term .pr { color: #7d8590; }
+.term .raw { background: transparent; color: #ffffff; border: 0; outline: 0; padding: 2px 0; caret-color: #ffffff; }
+.term .raw::placeholder { color: #5c6470; }
+.term .btn { background: #1c2128; color: #e8eaed; border-color: #30363d; }
 .jl { font: 12px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace; color: var(--muted); max-height: 180px; overflow-y: auto; overflow-wrap: anywhere; }
 .jl b { color: var(--text); font-weight: 500; }
 .jl .ext { color: var(--bad, #c0392b); }
@@ -189,18 +203,74 @@ const age = t => Math.max(0, (now - new Date(t)) / 1000);
 const ago = t => { const s = Math.floor(age(t)); return s < 60 ? `${s} с` : s < 3600 ? `${Math.floor(s / 60)} мин` : s < 86400 ? `${Math.floor(s / 3600)} ч` : `${Math.floor(s / 86400)} д`; };
 const hm = t => new Date(t).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
 
+// The commands of a socket, for the "?" of the command line. [command, what it does]; ² = only the new firmware.
+const HELP = [
+  ['Основное', [
+    ['r11', 'включить реле 1 (r10 — выключить; r21, r20 — реле 2)'],
+    ['sh time', 'часы розетки и синхронизация'],
+    ['sh all', 'все настройки и значения одной строкой в лог ²'],
+    ['save', 'сохранить настройки (то же — «;» в конце команды)'],
+    ['reset', 'перезагрузить розетку'],
+    ['default=1', 'сбросить автоматику: расписания, термостат, уставки ²'],
+  ]],
+  ['Термостат', [
+    ['hotter=1', 'нагрев (0 — выключить)'], ['cooler=1', 'охлаждение (0 — выключить)'],
+    ['ctempl=2200', 'уставка, °C × 100 (22.00 °C)'], ['tdelta=50', 'гистерезис, °C × 100'],
+    ['dtempl=2200', 'дневная уставка'], ['ntempl=1800', 'ночная уставка'],
+    ['sh tls', 'уставки'], ['sh hotter', 'режим нагрева'], ['sh cooler', 'режим охлаждения'],
+    ['sh tsensors', 'по каким датчикам может идти термостат ²'],
+    ['sh tsensor', 'по какому идёт сейчас ²'],
+    ['tsensor=temp_out;', 'перепривязать термостат к датчику, сразу ²'],
+    ['tsensor=-;', 'вернуть датчик платы по умолчанию ²'],
+    ['rsensor=dev/temp_out;', 'temp_remote: температура с другой розетки, после reset (rsensor=- — нет) ²'],
+    ['sh rsensor', 'источник temp_remote ²'], ['rtimeout=120', 'сколько секунд ждать temp_remote ²'],
+  ]],
+  ['Расписания', [
+    ['lschm=0', 'расписание реле 1 (0 — нет, 99 — своё)'], ['lschm2=0', 'расписание реле 2 (100 — своё)'],
+    ['sh lschm', 'расписание реле 1'], ['sh lschm2', 'расписание реле 2'],
+    ['aofs=0', 'автовыключение реле 1, секунд (полив: секунд в час)'], ['aofs2=0', 'то же для реле 2'],
+    ['sh cschm1', 'своё расписание реле 1 по часам'], ['sh cschm2', 'то же для реле 2'],
+    ['cschm1=', 'задать своё расписание числом (маска 24 часов)'],
+    ['tz=3', 'часовой пояс'],
+  ]],
+  ['Связь и плата', [
+    ['sh net', 'Wi-Fi, уровень сигнала, IP'], ['sh mqtt', 'к какому брокеру подключена ²'],
+    ['mqttserver=host:port;', 'брокер, после reset ²'], ['mqttlocal=1', 'искать местный брокер ²'],
+    ['sh dinfo', 'тип платы'], ['sh pinset', 'набор пинов'], ['sh cmpl', 'сборка'],
+    ['devtype=', 'тип устройства ²'], ['sh email', 'e-mail владельца'],
+    ['autoreboot=1', 'перезагрузка при долгой потере связи'],
+  ]],
+  ['Шины и Modbus ²', [
+    ['sh i2c', 'пины I2C'], ['i2csda=4;', 'пин SDA, после reset (−1 — как у платы)'], ['i2cscl=12;', 'пин SCL'],
+    ['sh spi', 'пины SPI'], ['spisck=', 'SCK'], ['spics=', 'CS'], ['spiso=', 'SO'],
+    ['sh rtu', 'пины RTU'], ['rturx=', 'приём'], ['rtutx=', 'передача'],
+    ['rtubaud=9600', 'скорость RTU (rtuparity, rtustop, rtuaddr)'],
+    ['mbtcp=1', 'Modbus TCP (mbport, mbunit)'],
+  ]],
+];
+function helpHtml() {
+  return HELP.map(([t, rows]) => `<h4>${esc(t)}</h4><div class="hr">` + rows.map(([c, d]) => `<button data-c="${esc(c)}">${esc(c)}</button><span>${esc(d)}</span>`).join('') + '</div>').join('')
+    + '<div class="n">Нажатие ставит команду в строку, отправляет Enter. «;» в конце — сохранить. ² — только новая прошивка.</div>';
+}
+
 // topic kinds
 const isTime = k => ['time_up', 'time_comm', 'time_down'].includes(k);
 const relayKey = k => /^relays\/r\d+$/.test(k) || /^b\d+$/.test(k);
 const sensorName = k => k.replace(/^sensors\//, '');
 const isTemp = k => /^temp/.test(sensorName(k));
-function primaryTemp(t) {
-  for (const k of ['sensors/temp_out', 'temp_out', 'sensors/temp_in', 'temp_in']) if (t[k]) return [k, t[k]];
-  const k = Object.keys(t).find(k => isTemp(k) && !k.endsWith('_json'));
+// The main temperature of the card is the one the thermostat follows: tsensor of the device (donoff2), without
+// it temp_out, or another temperature with a reading; temp_in (the control sensor inside the board) comes last.
+function primaryTemp(t, P) {
+  const ts = P && P.tsensor ? P.tsensor.v.replace(/^tsensor=/, '').split(' ')[0] : '';
+  for (const k of [...(ts ? ['sensors/' + ts, ts] : []), 'sensors/temp_out', 'temp_out']) if (t[k]) return [k, t[k]];
+  const temps = Object.keys(t).filter(k => isTemp(k) && !k.endsWith('_json') && !isControlTemp(k)).sort();
+  const k = temps.find(k => Number(t[k].v) > -127) || temps[0] || ['sensors/temp_in', 'temp_in'].find(k => t[k]);
   return k ? [k, t[k]] : null;
 }
 // temp_in only watches the device itself: in brackets after the main temperature, -127 means there is none
 const isControlTemp = k => sensorName(k) === 'temp_in';
+// out/status (online, or offline by the Last Will) is the state of the link, not a sensor
+const isStatus = k => k === 'status';
 function controlTemp(t, pt) {
   const k = ['sensors/temp_in', 'temp_in'].find(k => t[k]);
   if (!k || (pt && pt[0] === k) || Number(t[k].v) === -127) return null;
@@ -286,15 +356,18 @@ function hbar(bits, now, big) {
 
 // the small chart of temp_out for the last 24 h on the card, like the tiles of an exchange
 const sparks = new Map(); // dev -> {at, busy}
-async function spark(id, el) {
+async function spark(id, el, main) {
   const st = sparks.get(id) || {};
-  if (st.busy || Date.now() - (st.at || 0) < 60000) return;
+  if (st.busy || (st.main === main && Date.now() - (st.at || 0) < 60000)) return;  // a new main sensor: at once
   sparks.set(id, { ...st, busy: true });
   try {
     const h = await api(`/api/v1/history?dev=${encodeURIComponent(id)}&range=24h`);
-    // temp_out, or another temperature, or the current (sct013x3 is the sum of the three phases)
+    // the main temperature of the card (the one the thermostat follows), or temp_out, or another temperature
+    // (temp_in last), or the current (sct013x3 is the sum of the three phases); one with readings goes first
     const o = h.others || [];
-    const s = h.temps.find(x => x.name === 'temp_out') || h.temps[0] || o.find(x => x.name === 'sct013x3') || o.find(x => /^sct|current/.test(x.name)) || o[0];
+    const rank = n => n === main ? 0 : n === 'temp_out' ? 1 : n === 'temp_in' ? 3 : 2;
+    const temps = h.temps.slice().sort((a, b) => rank(a.name) - rank(b.name));
+    const s = temps.find(x => x.pts.length > 1) || temps[0] || o.find(x => x.name === 'sct013x3') || o.find(x => /^sct|current/.test(x.name)) || o[0];
     const unit = !s ? '' : /^temp/.test(s.name) ? '°C' : /^sct|current/.test(s.name) ? 'А' : /power/.test(s.name) ? 'Вт' : /volt|volage/.test(s.name) ? 'В' : '';
     const box = el.querySelector('.spk'), cap = el.querySelector('.sc');
     if (!s || s.pts.length < 2) { box.innerHTML = ''; cap.innerHTML = s ? '<span>история копится…</span>' : ''; }
@@ -309,8 +382,8 @@ async function spark(id, el) {
       const dt = v[v.length - 1] - v[0], hrs = Math.round((t1 - t0) / 3600);
       cap.innerHTML = `<span>${esc(s.name)} за ${hrs >= 1 ? hrs + ' ч' : Math.max(1, Math.round((t1 - t0) / 60)) + ' мин'}: ${dt >= 0 ? '+' : '−'}${Math.abs(dt).toFixed(2)} ${unit}</span><span>${Math.min(...v).toFixed(2)} … ${Math.max(...v).toFixed(2)}</span>`;
     }
-    sparks.set(id, { at: Date.now() });
-  } catch (e) { sparks.set(id, { at: Date.now() }); }
+    sparks.set(id, { at: Date.now(), main });
+  } catch (e) { sparks.set(id, { at: Date.now(), main }); }
 }
 
 // the schedule controls in "Управление": a preset per relay, and the editor of the custom schemes
@@ -415,8 +488,11 @@ function makeCard(id) {
     <details>
       <summary>Управление</summary>
       <div class="ctl">
-        <div class="con"><input type="text" class="raw" placeholder="команда, Enter — отправить (↑ — прошлые)" autocomplete="off" spellcheck="false" autocapitalize="off"><button class="btn" data-a="raw">⏎</button></div>
-        <div class="last" title="последний ответ в /out/info"></div>
+        <div class="term">
+          <div class="tout" title="команды и ответы розетки (/out/info и /out/log)"></div>
+          <div class="con"><span class="pr">&gt;</span><input type="text" class="raw" placeholder="команда, Enter — отправить (↑ — прошлые)" autocomplete="off" spellcheck="false" autocapitalize="off"><button class="btn" data-a="raw">⏎</button><button class="btn" data-a="help" title="список команд">?</button></div>
+        </div>
+        <div class="help" hidden></div>
         <div class="levels"></div>
         <div class="row"><label>Реле</label><span class="rctl"></span></div>
         <div class="row"><label>Уставка, °C</label><input type="number" class="sp" step="0.5" min="-40" max="100"><button class="btn primary" data-a="sp">Задать</button></div>
@@ -443,12 +519,15 @@ function makeCard(id) {
     if (a === 'heat') { if (await send(id, 'hotter=1', el, 'включить режим НАГРЕВА?')) { await sleep(1200); askMode(id, el); } return; }
     if (a === 'autooff') { if (await send(id, 'hotter=0', el, 'выключить автоматику (hotter=0, затем cooler=0)? Реле выключится.')) { await sleep(1200); if (await send(id, 'cooler=0', el)) { await sleep(1200); askMode(id, el); } } return; }
     if (a === 'raw') return rawSend();
+    if (a === 'help') { const h = el.querySelector('.help'); if (!h.innerHTML) h.innerHTML = helpHtml(); h.hidden = !h.hidden; return; }
+    if (b.dataset.c !== undefined) { raw.value = b.dataset.c; raw.focus(); return; }
   });
-  // the command line: "sh ..." goes at once, a setting asks first; ↑/↓ walk the commands sent from this card
+  // the command line: "sh ..." and "name=value" go at once, the rest (r11, reset, default=1) asks first; ↑/↓ walk the commands sent from this card
   const raw = el.querySelector('.raw'), hist = []; let hi = 0;
   async function rawSend() {
     const c = raw.value.trim(); if (!c) return;
-    if (await send(id, c, el, /^sh\s/i.test(c) ? '' : 'отправить команду?')) {
+    // no question for a query (sh ...) and for a setting (name=value); default= resets the automation, so it asks
+    if (await send(id, c, el, /^sh\s/i.test(c) || (/^\w+=/.test(c) && !/^default=/i.test(c)) ? '' : 'отправить команду?')) {
       if (hist[hist.length - 1] !== c) hist.push(c);
       hi = hist.length; raw.value = '';
     }
@@ -511,14 +590,17 @@ function render(d) {
   d.info = d.info || []; d.log = d.log || []; d.cmds = d.cmds || []; d.topics = d.topics || {};
   const el = cards.get(d.id) || makeCard(d.id);
   const t = d.topics, a = age(d.last_seen);
-  el.classList.toggle('stale', a > 300);
-  const dot = a < 60 ? 'ok' : a < 300 ? 'warn' : '';
-  const pt = primaryTemp(t);
+  el.classList.toggle('stale', a > 300 || (!!d.topics.status && d.topics.status.v === 'offline'));
+  // out/status = offline: the Last Will, the device is gone whatever the age of its last message
+  const offl = !!t.status && t.status.v === 'offline';
+  const dot = offl ? 'bad' : a < 60 ? 'ok' : a < 300 ? 'warn' : '';
+  const pt = primaryTemp(t, d.params);
   const ctemp = controlTemp(t, pt);
   const clock = deviceClock(t);
   const relays = Object.keys(t).filter(relayKey).sort();
-  const sensors = Object.keys(t).filter(k => !isTime(k) && !relayKey(k) && !k.endsWith('_json') && !t[k].v.startsWith('{') && (!pt || (k !== pt[0] && !isControlTemp(k)))).sort();
+  const sensors = Object.keys(t).filter(k => !isTime(k) && !relayKey(k) && !isStatus(k) && !k.endsWith('_json') && !t[k].v.startsWith('{') && (!pt || (k !== pt[0] && !isControlTemp(k)))).sort();
   const rows = [];
+  if (t.status) rows.push(['Связь', t.status.v === 'online' ? '<span class="sync ok">online</span>' : `<span class="sync bad">${esc(t.status.v)}</span>`]);
   if (t.time_up) rows.push(['Время работы', `<span class="num">${esc(t.time_up.v)}</span>`]);
   const dt = devTime(d.params || {});
   const syncHtml = dt ? (dt.synced ? ' <span class="sync ok" title="sh time: S=1">✓ синхр.</span>' : ' <span class="sync bad" title="sh time: S=0 — расписания, кроме 1 и 2, не работают">⚠ время не синхронизировано</span>') : '';
@@ -527,7 +609,7 @@ function render(d) {
   // more than 4 sensors: the first 4 with values (-127 = no sensor) stay, the rest go under the arrow
   const bad = k => Number(t[k].v) === -127;
   const ordered = sensors.length > 4 ? [...sensors.filter(k => !bad(k)), ...sensors.filter(bad)] : sensors;
-  const srow = k => [esc(sensorName(k)), `<span class="num">${esc(t[k].v)}</span>`];
+  const srow = k => [esc(sensorName(k)), `<span class="num sv${bad(k) ? ' none' : ''}">${esc(t[k].v)}</span>`];
   for (const k of ordered.slice(0, 4)) rows.push(srow(k));
   const extra = ordered.slice(4).map(srow);
   // the thermostat relay (the first one) gets a dot: orange = heating, blue = cooling, gray = no thermostat
@@ -558,8 +640,8 @@ function render(d) {
   el.querySelector('.live').innerHTML = `
     <div class="top" draggable="true" title="перетащите на вкладку, чтобы перенести в группу"><span class="dot ${dot}"></span><h2>${esc(d.id)}</h2><span class="seen">${ago(d.last_seen)} назад</span><button class="ebtn" data-e="edit" title="группа и комментарий">✎</button></div>
     ${comments[d.id] ? `<div class="cmt">${esc(comments[d.id])}</div>` : ''}
-    ${a > 300 ? `<div class="lost"><b>Нет связи</b> · последний раз ${new Date(d.last_seen).toLocaleString('ru-RU', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })} (${ago(d.last_seen)} назад)</div>` : ''}
-    ${pt ? `<div class="big">${esc(pt[1].v)} <small>°C${ctemp !== null ? ` (${esc(ctemp)})` : ''}</small><span class="lbl">${esc(sensorName(pt[0]))}</span></div>` : ''}
+    ${a > 300 || offl ? `<div class="lost"><b>Нет связи</b> · последний раз ${new Date(d.last_seen).toLocaleString('ru-RU', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })} (${ago(d.last_seen)} назад)</div>` : ''}
+    ${pt ? `<div class="big${Number(pt[1].v) === -127 ? ' none' : ''}">${esc(pt[1].v)} <small>°C</small><span class="lbl">${esc(sensorName(pt[0]))}</span>${ctemp !== null ? `<span class="lbl">(${esc(ctemp)} temp_in)</span>` : ''}</div>` : ''}
     ${rows.length ? `<div class="kv">${rows.map(([k, v]) => `<span>${k}</span><span>${v}</span>`).join('')}</div>` : ''}
     ${extra.length ? `<details class="more"${moreOpen ? ' open' : ''}><summary>ещё ${extra.length}</summary><div class="kv">${extra.map(([k, v]) => `<span>${k}</span><span>${v}</span>`).join('')}</div></details>` : ''}
     ${relayHtml ? `<div class="relays">${relayHtml}</div>` : ''}
@@ -570,17 +652,20 @@ function render(d) {
   if (rbox.dataset.html !== rctl) { rbox.innerHTML = rctl || '<span class="q">реле нет</span>'; rbox.dataset.html = rctl; }
   schControls(d.id, el, relays, P, nowH);
   el.querySelector('.hbtn').hidden = !(hasHistory && (relays.length || sensors.length || pt));
-  if (hasHistory) spark(d.id, el);
+  if (hasHistory) spark(d.id, el, pt ? sensorName(pt[0]) : '');
   // the last answer with levels: "C=2600,D=2600,N=2600 dT=100"
   const lv = P.tls;
   el.querySelector('.levels').textContent = lv
     ? (() => { const l = parseLevels(lv.v); return `Сейчас: уставка ${l.c} °C, гистерезис ${l.dt} °C (ответ ${ago(lv.at)} назад)`; })()
     : 'Текущие уставки неизвестны — панель спрашивает их раз в минуту, или «Запросить: уставки».';
   const msgs = [...d.info.filter(m => !m.auto).map(m => ({ ...m, k: 'i' })), ...d.log.map(m => ({ ...m, k: 'l' }))].sort((x, y) => x.at < y.at ? -1 : 1).slice(-12);
-  const lastIn = d.info.filter(m => !m.out).slice(-1)[0];
-  const lastHtml = lastIn ? `<span>${hm(lastIn.at)}</span> ← <b>${esc(lastIn.text)}</b>` : 'ответов ещё нет';
-  const le = el.querySelector('.last');
-  if (le.dataset.html !== lastHtml) { le.innerHTML = lastHtml; le.dataset.html = lastHtml; le.title = lastIn ? lastIn.text : ''; }
+  // the terminal: the commands sent and what the socket answered since the page was opened (empty at first),
+  // three lines high, the newest at the bottom, the older ones by scrolling
+  if (el.dataset.t0 === undefined) el.dataset.t0 = msgs.length ? msgs[msgs.length - 1].at : '';
+  const tmsgs = msgs.filter(m => m.at > el.dataset.t0);
+  const tHtml = tmsgs.map(m => `<div class="${m.out ? 'tc' : /^E:/.test(m.text) ? 'te' : ''}"><span class="tm">${hm(m.at)}</span> ${m.out ? '&gt; ' : ''}${esc(m.text)}</div>`).join('');
+  const le = el.querySelector('.tout');
+  if (le.dataset.html !== tHtml) { le.innerHTML = tHtml; le.dataset.html = tHtml; le.scrollTop = le.scrollHeight; }
   const dm = t => new Date(t).toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit' });
   const jHtml = d.cmds.length ? d.cmds.slice().reverse().map(m => `<div>${dm(m.at)} ${hm(m.at)} <b>${esc(m.text)}</b>${m.by === 'other' ? ' <span class="ext">не панель</span>' : ''}</div>`).join('') : 'команд пока не было';
   const je = el.querySelector('.jl');
@@ -629,7 +714,7 @@ async function refresh() {
   tabList.push([ARCH, '🗄 ' + ARCH, allBy.get(ARCH)]);
   if (all.length && !tabList.some(x => x[0] === tab)) setTab('*', false);  // a group that is gone (not before the first data)
   const tabsHtml = tabList.map(([k, label, list]) => {
-    const off = k !== ARCH && list.some(d => age(d.last_seen) > 300);
+    const off = k !== ARCH && list.some(d => age(d.last_seen) > 300 || (d.topics && d.topics.status && d.topics.status.v === 'offline'));
     return `<button class="tab${k === tab ? ' on' : ''}${k === ARCH ? ' arch' : ''}" data-g="${esc(k)}" title="${esc(label)}"><span class="tn">${esc(label)}</span><span class="n">${list.length}</span>${off ? '<span class="off" title="есть устройства без связи"></span>' : ''}</button>`;
   }).join('') + '<button class="tab add" data-g="+" title="новая группа">+</button>';
   const tb = $('tabs');

@@ -204,6 +204,8 @@ func point(dev, sub, payload string, at time.Time) string {
 
 // the ranges of the page and the step of their charts
 var ranges = map[string]struct{ d, step time.Duration }{
+	"1m":  {time.Minute, 5 * time.Second},
+	"5m":  {5 * time.Minute, 5 * time.Second},
 	"15m": {15 * time.Minute, 10 * time.Second},
 	"1h":  {time.Hour, 30 * time.Second},
 	"6h":  {6 * time.Hour, 2 * time.Minute},
@@ -251,7 +253,7 @@ func dur(d time.Duration) string {
 func (x *Influx) History(dev, rng string) (*History, error) {
 	r, ok := ranges[rng]
 	if !ok {
-		return nil, errors.New("range: 15m, 1h, 6h, 24h, 7d or 30d")
+		return nil, errors.New("range: 1m, 5m, 15m, 1h, 6h, 24h, 7d or 30d")
 	}
 	if !devRe.MatchString(dev) {
 		return nil, errors.New("bad device id")
@@ -260,7 +262,8 @@ func (x *Influx) History(dev, rng string) (*History, error) {
 	h := &History{Dev: dev, Range: rng, From: to.Add(-r.d), To: to, Step: r.step.Seconds(), Temps: []Series{}, Others: []Series{}, Relays: []RelayHist{}}
 	base := fmt.Sprintf(`from(bucket: %q) |> range(start: %s, stop: %s) |> filter(fn: (r) => r.dev == %q)`,
 		x.Bucket, h.From.Format(time.RFC3339), to.Format(time.RFC3339), dev)
-	flux := base + ` |> filter(fn: (r) => r._measurement == "sensor" or r._measurement == "relay")
+	// -127 (no sensor) and -128 (not ready) are not readings: they must not get into the means
+	flux := base + ` |> filter(fn: (r) => r._measurement == "relay" or (r._measurement == "sensor" and r._value != -127.0 and r._value != -128.0))
   |> aggregateWindow(every: ` + dur(r.step) + `, fn: mean, createEmpty: false)
   |> keep(columns: ["_time", "_value", "_measurement", "name"]) |> yield(name: "chart")
 on = ` + base + ` |> filter(fn: (r) => r._measurement == "relay")
