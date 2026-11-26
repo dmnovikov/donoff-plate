@@ -634,7 +634,7 @@ var (
 		{regexp.MustCompile(`^(lschm2|l2schm|schm2)=\d+$`), "lschm2"},
 		{regexp.MustCompile(`^aofs1?=\d+$`), "aofs1"},
 		{regexp.MustCompile(`^(aofs2|a2ofs)=\d+$`), "aofs2"},
-		{regexp.MustCompile(`^tsensor=\S+`), "tsensor"}, // donoff2: the value the thermostat follows
+		{regexp.MustCompile(`^(N:)?tsensor=\S+`), "tsensor"}, // donoff2: the value the thermostat follows; "N:" = the answer to a change
 	}
 	bitsAnswer = regexp.MustCompile(`^[01]{4}( [01]{4}){5}$`)
 )
@@ -684,6 +684,12 @@ func (h *Hub) pollCmds(id string) []string {
 		if v, ok := d.Params[k]; ok {
 			_, n, _ := strings.Cut(v.V, "=")
 			used[n] = true
+		}
+	}
+	// the thermostat tells day from night by the custom scheme 99, so its hours are asked while it is on
+	for _, k := range []string{"hotter", "cooler"} {
+		if v, ok := d.Params[k]; ok && !strings.HasSuffix(v.V, "=0") {
+			used["99"] = true
 		}
 	}
 	if used["99"] {
