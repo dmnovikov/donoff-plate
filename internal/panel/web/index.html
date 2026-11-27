@@ -27,6 +27,7 @@ main { max-width: 1400px; margin: 0 auto; padding: 16px; }
 .card.stale { background: var(--soft); filter: grayscale(1); opacity: .75; }
 .lost { margin: 2px 0 6px; font-size: 13px; color: var(--muted); }
 .lost b { color: var(--text); }
+.lost.warn { color: var(--text); border-left: 3px solid var(--warn); padding-left: 8px; } .lost.warn b { color: var(--warn); }
 .top { display: flex; align-items: center; gap: 8px; }
 .top h2 { margin: 0; font-size: 16px; flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .seen { color: var(--muted); font-size: 12px; }
@@ -727,7 +728,7 @@ function render(d) {
   el.querySelector('.live').innerHTML = `
     <div class="top" draggable="true" title="перетащите на вкладку, чтобы перенести в группу"><span class="dot ${dot}"></span><h2>${esc(d.id)}</h2><span class="seen">${ago(d.last_seen)} назад</span><button class="ebtn" data-e="edit" title="группа и комментарий">✎</button></div>
     ${comments[d.id] ? `<div class="cmt">${esc(comments[d.id])}</div>` : ''}
-    ${a > 300 || offl ? `<div class="lost"><b>Нет связи</b> · последний раз ${new Date(d.last_seen).toLocaleString('ru-RU', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })} (${ago(d.last_seen)} назад)</div>` : ''}
+    ${a > 300 || offl ? `<div class="lost"><b>Нет связи</b> · последний раз ${new Date(d.last_seen).toLocaleString('ru-RU', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })} (${ago(d.last_seen)} назад)</div>` : a > 60 ? `<div class="lost warn"><b>Нет данных ${ago(d.last_seen)}</b> · показания старые, команда может не дойти</div>` : ''}
     ${pt ? `<div class="big${Number(pt[1].v) === -127 ? ' none' : ''}">${esc(pt[1].v)} <small>°C</small><span class="lbl">${esc(sensorName(pt[0]))}</span>${ctemp !== null ? `<span class="lbl">(${esc(ctemp)} temp_in)</span>` : ''}</div>` : ''}
     ${rows.length ? `<div class="kv">${rows.map(([k, v]) => `<span>${k}</span><span>${v}</span>`).join('')}</div>` : ''}
     ${extra.length ? `<details class="more"${moreOpen ? ' open' : ''}><summary>ещё ${extra.length}</summary><div class="kv">${extra.map(([k, v]) => `<span>${k}</span><span>${v}</span>`).join('')}</div></details>` : ''}
@@ -776,7 +777,9 @@ function render(d) {
   const tmsgs = msgs.filter(m => m.at > el.dataset.t0).map(m => /^\{"synced"/.test(m.text) ? { ...m, text: 'конфигурация получена — таблица в разделе «Запросы»' } : m);
   // a query or a setting the socket did not answer within 5 s gets a "timeout" line
   const noAns = (m, i) => m.out && /^(sh\s|\w+=)/i.test(m.text) && !(tmsgs[i + 1] && !tmsgs[i + 1].out) && now - new Date(m.at) > 5000;
-  const tHtml = tmsgs.map((m, i) => `<div class="${m.out ? 'tc' : /^E:/.test(m.text) ? 'te' : ''}"><span class="tm">${hm(m.at)}</span> ${m.out ? '&gt; ' : ''}${esc(m.text)}</div>${noAns(m, i) ? '<div class="te">timeout — ответа нет</div>' : ''}`).join('');
+  // a command sent while the device is silent for over a minute: say at once that it is probably lost
+  const silent = (m, i) => m.out && a > 60 && new Date(m.at) > new Date(d.last_seen) && !(tmsgs[i + 1] && !tmsgs[i + 1].out);
+  const tHtml = tmsgs.map((m, i) => `<div class="${m.out ? 'tc' : /^E:/.test(m.text) ? 'te' : ''}"><span class="tm">${hm(m.at)}</span> ${m.out ? '&gt; ' : ''}${esc(m.text)}</div>${silent(m, i) ? `<div class="te">розетка молчит ${ago(d.last_seen)} — команда, скорее всего, не дошла</div>` : noAns(m, i) ? '<div class="te">timeout — ответа нет</div>' : ''}`).join('');
   const le = el.querySelector('.tout');
   if (le.dataset.html !== tHtml) { le.innerHTML = tHtml; le.dataset.html = tHtml; le.scrollTop = le.scrollHeight; }
   const dm = t => new Date(t).toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit' });
